@@ -1,0 +1,28 @@
+{
+  "name": "kraken-bot",
+  "version": "2.0.0",
+  "description": "AI-powered cryptocurrency trading bot for Kraken",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "kraken",
+    "cryptocurrency",
+    "bitcoin",
+    "trading",
+    "bot",
+    "ai"
+  ],
+  "license": "GPL-3.0",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "kraken-api": "latest",
+    "ws": "^8.19.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}
