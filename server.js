@@ -23,7 +23,8 @@ if (process.argv.length > 2) {
 
 // add EUR to make the trade pair
 var pair = asset+'ZEUR';
-			
+
+// first get our balance			
 kraken.api('Balance', null, function(error, data) {
 	if(error) {
 		log(error);
@@ -65,7 +66,8 @@ kraken.api('Balance', null, function(error, data) {
 					
 						// we could end up with negative volume because of the 50 cents correction
 						if (volume < 0) volume = 0;
-
+						
+						// see if it makes sense to trade
 						if (volume * lasttrade >= minTradeAmount && volume >= minTrade) {
 
 							log("[TRADE] Buying " + parseFloat(volume).toFixed(5) + " of " + asset + "...");
@@ -74,6 +76,8 @@ kraken.api('Balance', null, function(error, data) {
 									log(error);
 								} else {
 									// buy successful!
+						
+									// directly insert a sale order for what we just bought
 									kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+addontrade)}, function(error, data) {});
 								}
 							});
@@ -98,7 +102,6 @@ kraken.api('Balance', null, function(error, data) {
 									log(error);
 								} else {
 									// sale complete!
-//									kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1-addontrade)}, function(error, data) {});
 								}
 							});
 						} else {
