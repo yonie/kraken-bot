@@ -8,7 +8,7 @@ var moveLimit = settings.moveLimit;
 var caution = settings.caution;
 var addonratio = settings.addonratio;
 var addontrade = settings.addontrade;
-var mintrade = settings.minTrade;
+var minTrade = settings.minTrade;
 var minTradeAmount = settings.minTradeAmount;
 
 // set up kraken api
