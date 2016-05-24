@@ -2,3 +2,14 @@
 exports.krakenkey = 'yourkey';
 exports.krakenpasscode = 'yourpasscode';
 
+// tolerance determines how much % near hi or low the lasttrade needs to be to begin acting
+exports.buyTolerance = 45
+exports.sellTolerance = 45
+exports.moveLimit = 5
+exports.caution = 0.1
+exports.addonratio = 0.1
+exports.addontrade = 0.003 
+
+// determine the minimum asset amount to trade (this prevents API errors)
+exports.minTrade = 0.01;
+exports.minTradeAmount = 0.25;
