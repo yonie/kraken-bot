@@ -1,19 +1,19 @@
-// set up kraken api
+// get settings from external file
 var settings = require("./settings.js");
+var krakenkey = settings.krakenkey;
+var krakenpasscode = settings.krakenpasscode;
+var buyTolerance = settings.buyTolerance;
+var sellTolerance = settings.sellTolerance;
+var moveLimit = settings.moveLimit;
+var caution = settings.caution;
+var addonratio = settings.addonratio;
+var addontrade = settings.addontrade;
+var mintrade = settings.minTrade;
+var minTradeAmount = settings.minTradeAmount;
+
+// set up kraken api
 var KrakenClient = require('kraken-api');
-var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
-
-// tolerance determines how much % near hi or low the lasttrade needs to be to begin acting
-var buyTolerance = 60; // 45
-var sellTolerance = 20; // 45
-var moveLimit = 3; // 5
-var caution = 1.0; // 0.1
-var addonratio = 0.99; // 0.1
-var addontrade = 0.001 + 0.0026; // min 0.0026 
-
-// determine the minimum asset amount to trade (this prevents API errors)
-var minTrade = 0.01;
-var minTradeAmount = 0.25;
+var kraken = new KrakenClient(krakenkey,krakenpasscode);
 
 // set trade asset (bitcoin=XBTC, litecoin=XLTC, ether=XETH), or get from CMDLINE if given
 var asset=['XLTC']; // default to litecoin
