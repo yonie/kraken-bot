@@ -78,7 +78,14 @@ kraken.api('Balance', null, function(error, data) {
 									// buy successful!
 						
 									// directly insert a sale order for what we just bought
-									kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+addontrade)}, function(error, data) {});
+									log("[TRADE] Selling " + parseFloat(volume).toFixed(5) + " of " + asset + "...");
+									kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+addontrade)}, function(error, data) {
+										if (error) {
+											log(error);
+										} else {
+											// buy successful!
+										}
+									});
 								}
 							});
 						} else {
