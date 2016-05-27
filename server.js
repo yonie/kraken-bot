@@ -20,16 +20,20 @@ var asset=['XLTC']; // default to litecoin
 if (process.argv.length > 2) {
 	asset=[process.argv[2]];
 }
+var currency=['ZEUR']; // default to euro
+if (process.argv.length > 3) {
+	currency=[process.argv[3]];
+}
 
-// add EUR to make the trade pair
-var pair = asset+'ZEUR';
+// add currency to make the trade pair
+var pair = asset+currency;
 
 // first get our balance			
 kraken.api('Balance', null, function(error, data) {
 	if(error) {
 		log(error);
 	} else {
-		var euroBalance = data.result.ZEUR;
+		var currencyBalance = data.result[currency];
 		var assetBalance = data.result[asset];
 
 		// get ticker info
@@ -61,8 +65,8 @@ kraken.api('Balance', null, function(error, data) {
 						// buy ratio, the closer to 0 the more to buy
 						var buyRatio = 1-(distancefromlow/buyTolerance)
 
-						// determine the volume to buy, skip 50 cents for rounding issues
-						var volume = ((euroBalance-0.5) / lasttrade) * buyRatio * caution;
+						// determine the volume to buy
+						var volume = (currencyBalance / lasttrade) * buyRatio * caution;
 					
 						// we could end up with negative volume because of the 50 cents correction
 						if (volume < 0) volume = 0;
@@ -125,12 +129,12 @@ kraken.api('Balance', null, function(error, data) {
 function log(string) {
 	var d = new Date();
 	var datestring = ("0" + d.getDate()).slice(-2) + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + d.getFullYear() + " " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
-	console.log(datestring + (asset!=null?" "+asset:null) + " " + string);
+	console.log(datestring + (asset!=null?" "+asset+currency:null) + " " + string);
 }
 
 // fancy graph to quickly see how asset is trading [bbb--*----ss]
 function createGraph(distancefromlow, low, hi, buyTolerance, sellTolerance) {
-	var width = 28;
+	var width = 24;
 	var move = Math.round(((hi-low)/hi)*100);
 	var result = low.substring(0,7) + " [";
 	for (i=0;i<=width;i++) {
