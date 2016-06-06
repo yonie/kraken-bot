@@ -55,26 +55,25 @@ kraken.api('Balance', null, function(error, data) {
 				log(createGraph(distancefromlow, daylow, dayhi, buyTolerance, sellTolerance));
 			
 				// see if we are going to trade 
-				if (distancefromlow <= buyTolerance || distancefromhi <= sellTolerance) {
+				if (move >= moveLimit && (distancefromlow <= buyTolerance || distancefromhi <= sellTolerance)) {
 
 					// are we buying?
-					if (move >= moveLimit && distancefromlow <= buyTolerance) {
-						
+					if (distancefromlow <= buyTolerance) {
+						log("wanna buy..");						
 						// we should buy
 
 						// buy ratio, the closer to 0 the more to buy
 						var buyRatio = 1-(distancefromlow/buyTolerance)
+						log("buyRatio " + buyRatio);						
 
 						// determine the volume to buy
 						var volume = (currencyBalance / lasttrade) * buyRatio * caution;
+						log("volume " + parseFloat(volume).toFixed(3));						
 					
-						// we could end up with negative volume because of the 50 cents correction
-						if (volume < 0) volume = 0;
-						
 						// see if it makes sense to trade
 						if (volume * lasttrade >= minTradeAmount && volume >= minTrade) {
 
-							log("[TRADE] Buying " + parseFloat(volume).toFixed(5) + " of " + asset + "...");
+							log("[TRADE] Buying " + parseFloat(volume).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*1.00001).toFixed(5)+"...");
 							kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": volume, "price": lasttrade*1.00001}, function(error, data) {
 								if (error) {
 									log(error);
@@ -82,12 +81,16 @@ kraken.api('Balance', null, function(error, data) {
 									// buy successful!
 						
 									// directly insert a sale order for what we just bought
-									log("[TRADE] Selling " + parseFloat(volume).toFixed(5) + " of " + asset + "...");
+									log("[TRADE] Selling " + parseFloat(volume*addonratio).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*(1+addontrade)).toFixed(5)+"...");
 									kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+addontrade)}, function(error, data) {
 										if (error) {
 											log(error);
 										} else {
 											// buy successful!
+											log("[TRADE] Selling " + parseFloat(volume*addonratio).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*(1+(addontrade*2))).toFixed(5)+"...");
+											kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+(addontrade*2))}, function(error, data) {
+												if (error) log(error);
+											});
 										}
 									});
 								}
@@ -98,16 +101,19 @@ kraken.api('Balance', null, function(error, data) {
 					} else { 
 						
 						// we should sell
+						log("wanna sell..");
 
 						// sell ratio, the closer to 0 the more to buy
 						var sellRatio = 1-(distancefromhi/sellTolerance)
+						log("sellRatio "+sellRatio);
 
 						// determine how much to sell 
 						var volume = assetBalance * sellRatio * caution;
+						log("volume " + parseFloat(volume).toFixed(3));						
 
 						// make sure we are trading decent amounts
 						if (volume * lasttrade >= minTradeAmount && volume >= minTrade) {
-							log("[TRADE] Selling " + parseFloat(volume).toFixed(5) + " of " + asset + "...");
+							log("[TRADE] Selling " + parseFloat(volume).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*0.99999).toFixed(5)+"...");
 							kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume, "price": lasttrade*0.99999}, function(error, data) {
 								if (error) {
 									log(error);
@@ -134,7 +140,7 @@ function log(string) {
 
 // fancy graph to quickly see how asset is trading [bbb--*----ss]
 function createGraph(distancefromlow, low, hi, buyTolerance, sellTolerance) {
-	var width = 24;
+	var width = 10;
 	var move = Math.round(((hi-low)/hi)*100);
 	var result = low.substring(0,7) + " [";
 	for (i=0;i<=width;i++) {
