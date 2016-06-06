@@ -7,9 +7,9 @@ var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
 
 // get ticker info
 kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, data) {
-	log("Trade balance: "+data.result.eb);
+	if (!error) log("Trade balance: "+data.result.eb);
 	kraken.api('Balance',null, function(error,data) {
-		for (var m in data.result)
+		if (!error) for (var m in data.result)
 			log(m+": "+ data.result[m]);
 	});	
 });
