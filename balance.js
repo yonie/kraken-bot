@@ -3,19 +3,15 @@ var settings = require("./settings.js");
 var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
 
-if (Math.random()<0.9) process.exit();
+//if (Math.random()<0.9) process.exit();
 
 // get ticker info
 kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, data) {
-	
-	if(error) {
-		//log(error);
-	} else {
-		log("Trade balance: "+data.result.eb);
-		//kraken.api('Balance',null, function(error,data) {
-		//	if (error) {} //else console.log(data.result);
-		//});	
-	}
+	log("Trade balance: "+data.result.eb);
+	kraken.api('Balance',null, function(error,data) {
+		for (var m in data.result)
+			log(m+": "+ data.result[m]);
+	});	
 });
 
 // simple log helper function
