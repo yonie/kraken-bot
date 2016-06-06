@@ -79,18 +79,20 @@ kraken.api('Balance', null, function(error, data) {
 									// buy successful!
 						
 									// directly insert a sale order for what we just bought
-									log("[TRADE] Selling " + parseFloat(volume*addonratio).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*(1+addontrade)).toFixed(5)+"...");
-									kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+addontrade)}, function(error, data) {
-										if (error) {
-											log(error);
-										} else {
-											// buy successful!
-											log("[TRADE] Selling " + parseFloat(volume*addonratio).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*(1+(addontrade*2))).toFixed(5)+"...");
-											kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+(addontrade*2))}, function(error, data) {
-												if (error) log(error);
-											});
-										}
-									});
+									if (volume * addonratio >= minTrade) {
+										log("[TRADE] Selling " + parseFloat(volume*addonratio).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*(1+addontrade)).toFixed(5)+"...");
+										kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+addontrade)}, function(error, data) {
+											if (error) {
+												log(error);
+											} else {
+												// buy successful!
+												log("[TRADE] Selling " + parseFloat(volume*addonratio).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*(1+(addontrade*2))).toFixed(5)+"...");
+												kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+(addontrade*2))}, function(error, data) {
+													if (error) log(error);
+												});
+											}
+										});
+									}
 								}
 							});
 						}
