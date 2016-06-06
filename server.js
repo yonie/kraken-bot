@@ -15,13 +15,14 @@ var minTradeAmount = settings.minTradeAmount;
 var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(krakenkey,krakenpasscode);
 
-// set trade asset (bitcoin=XBTC, litecoin=XLTC, ether=XETH), or get from CMDLINE if given
-var asset=['XLTC']; // default to litecoin
-if (process.argv.length > 2) {
+// get trade pair from CMDLINE
+if (process.argv.length < 4) {
+	console.log("No trade pair specified.");
+	console.log("Usage: " + process.argv[1] + " [tradeAsset] [tradeCurrency]");
+	console.log("Example: to trade Litecoin for Euro, execute " + process.argv[1] + " XLTC ZEUR");
+	process.exit();
+} else {
 	asset=[process.argv[2]];
-}
-var currency=['ZEUR']; // default to euro
-if (process.argv.length > 3) {
 	currency=[process.argv[3]];
 }
 
