@@ -51,17 +51,17 @@ kraken.api('Balance', null, function(error, data) {
 				var distancefromlow = Math.round((lasttrade - daylow) / (dayhi - daylow) * 100);
 				var distancefromhi = Math.round((dayhi - lasttrade) / (dayhi - daylow) * 100);
 				var move = Math.round(((dayhi-daylow)/dayhi)*100);
-
+					
 				// output fancy graph
 				log(createGraph(distancefromlow, daylow, dayhi, buyTolerance, sellTolerance));
 			
 				// see if we are going to trade 
 				if (move >= moveLimit && (distancefromlow <= buyTolerance || distancefromhi <= sellTolerance)) {
-
+						
 					// are we buying?
 					if (distancefromlow <= buyTolerance) {
 						// we should buy
-
+	
 						// buy ratio, the closer to 0 the more to buy
 						var buyRatio = 1-(distancefromlow/buyTolerance)
 
@@ -86,10 +86,6 @@ kraken.api('Balance', null, function(error, data) {
 												log(error);
 											} else {
 												// buy successful!
-												log("[TRADE] Selling " + parseFloat(volume*addonratio).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*(1+(addontrade*2))).toFixed(5)+"...");
-												kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+(addontrade*2))}, function(error, data) {
-													if (error) log(error);
-												});
 											}
 										});
 									}
