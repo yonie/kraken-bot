@@ -10,7 +10,7 @@ kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, data) {
 	if (!error) log("Trade balance: "+data.result.eb);
 	kraken.api('Balance',null, function(error,data) {
 		if (!error) for (var asset in data.result)
-			log(asset+": "+ parseFloat(data.result[asset]).toFixed(5));
+			if (data.result[asset]>=0.00001) log(asset+": "+ parseFloat(data.result[asset]).toFixed(5));
 	});	
 });
 
