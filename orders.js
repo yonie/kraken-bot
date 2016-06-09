@@ -3,7 +3,7 @@ var settings = require("./settings.js");
 var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
 
-var maxAgeSeconds = 24 * 60 * 60;
+var maxAgeSeconds = settings.maxAgeSeconds;
 
 // get ticker info
 kraken.api('OpenOrders', null, function(error, data) {

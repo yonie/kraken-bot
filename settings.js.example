@@ -13,3 +13,6 @@ exports.addontrade = 0.001;
 // determine the minimum asset amount to trade (this prevents API errors)
 exports.minTrade = 0.01;
 exports.minTradeAmount = 0.50;
+
+// max time an order may exist before cleanup
+export.maxAgeSeconds = 60*60*24*7;
