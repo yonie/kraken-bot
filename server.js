@@ -100,7 +100,7 @@ kraken.api('Balance', null, function(error, data) {
 						buy(buyVolume, buyPrice);
 					
 						// sell some random amount
-						var sellVolume = assetBalance * Math.random * 0.04;
+						var sellVolume = assetBalance * Math.random() * 0.04;
 						var sellPrice = lasttrade * (1+mod);
 						sell(sellVolume, sellPrice);
 					}
