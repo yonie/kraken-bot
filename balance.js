@@ -3,8 +3,6 @@ var settings = require("./settings.js");
 var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
 
-//if (Math.random()<0.9) process.exit();
-
 // get ticker info
 kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, data) {
 	if (!error) log("Trade balance: "+data.result.eb);
