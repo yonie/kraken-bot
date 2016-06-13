@@ -60,6 +60,7 @@ kraken.api('Balance', null, function(error, data) {
 						
 					// are we buying?
 					if (distancefromlow <= buyTolerance) {
+
 						// we should buy
 	
 						// buy ratio, the closer to 0 the more to buy
@@ -70,27 +71,12 @@ kraken.api('Balance', null, function(error, data) {
 					
 						// see if it makes sense to trade
 						if (volume * lasttrade >= minTradeAmount && volume >= minTrade) {
-
-							log("[TRADE] Buying " + parseFloat(volume).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*1.00001).toFixed(5)+"...");
-							kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": volume, "price": lasttrade*1.00001}, function(error, data) {
-								if (error) {
-									log(error);
-								} else {
-									// buy successful!
+							buy(volume,lasttrade*1.00001);
 						
-									// directly insert a sale order for what we just bought
-									if (volume * addonratio >= minTrade) {
-										log("[TRADE] Selling " + parseFloat(volume*addonratio).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*(1+addontrade)).toFixed(5)+"...");
-										kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume* addonratio, "price": lasttrade * (1+addontrade)}, function(error, data) {
-											if (error) {
-												log(error);
-											} else {
-												// buy successful!
-											}
-										});
-									}
-								}
-							});
+							// try to directly insert a sale order for what we just bought
+							if (volume * addonratio >= minTrade && volume * addonratio * lasttrade * (1+addontrade) >= minTradeAmount) {
+								sell(volume*addonratio,lasttrade*(1+addontrade));
+							}
 						}
 					} 
 					else if (distancefromhi <= sellTolerance) { 
@@ -103,48 +89,46 @@ kraken.api('Balance', null, function(error, data) {
 						var volume = assetBalance * sellRatio * caution;
 						// make sure we are trading decent amounts
 						if (volume * lasttrade >= minTradeAmount && volume >= minTrade) {
-							log("[TRADE] Selling " + parseFloat(volume).toFixed(5) + " of " + asset + " for "+parseFloat(lasttrade*0.99999).toFixed(5)+"...");
-							kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": volume, "price": lasttrade*0.99999}, function(error, data) {
-								if (error) log(error);
-								else {
-									// sale complete!
-								}
-							});
+							sell(volume, lasttrade*0.99999);
 						}
 					} else {
 						
 						// do some random margin trading, LOL!
 
 						// determine how much to deviate from lasttrade
-						var mod = 0.0010 + 0.0026; // 0.0026 goes to kraken
+						var mod = 0.0005 + 0.0026; // 0.0026 goes to kraken
 					
 						// buy some
 						var buyVolume = (currencyBalance / lasttrade) * 0.05;
 						var buyPrice = lasttrade*(1-mod);
 						if (buyVolume>=minTrade && buyVolume * buyPrice >= minTradeAmount) {
-							log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for "+parseFloat(buyPrice).toFixed(5)+"...");
-							kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": buyVolume, "price": buyPrice}, function(error, data) {
-								if (error) log(error);
-							});
+							buy(buyVolume, buyPrice);
 						}
 					
 						// sell some
 						var sellVolume = assetBalance * 0.02;
 						var sellPrice = lasttrade * (1+mod);
 						if (sellVolume>=minTrade && sellVolume * sellPrice >= minTradeAmount) {
-							log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for "+parseFloat(sellPrice).toFixed(5)+"...");
-							kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": sellVolume, "price": sellPrice}, function(error, data) {
-								if (error) log(error);
-							});
+							sell(sellVolume, sellPrice);
 						}
-
-						
 					}
 				}
 			}
 		});
 	}
 });
+
+// buy stuff through kraken API
+function buy(buyVolume, buyPrice) {
+	log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for "+parseFloat(buyPrice).toFixed(5)+"...");
+	kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": buyVolume, "price": buyPrice}, function(error, data) { if (error) log(error); });
+}
+
+// sell stuff through kraken API
+function sell(sellVolume, sellPrice) {
+	log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for "+parseFloat(sellPrice).toFixed(5)+"...");
+	kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": sellVolume, "price": sellPrice}, function(error, data) { if (error) log(error); });
+}
 
 // simple log helper function
 function log(string) {
