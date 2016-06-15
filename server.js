@@ -46,6 +46,7 @@ kraken.api('Balance', null, function(error, data) {
 				var lasttrade = data.result[pair].c[0];
 				var daylow = data.result[pair].l[1];
 				var dayhi = data.result[pair].h[1];
+				var wavg = data.result[pair].p[1];
 	
 				// see if the difference between current and low/hi is less than tolerated spread
 				var distancefromlow = Math.round((lasttrade - daylow) / (dayhi - daylow) * 100);
@@ -89,20 +90,17 @@ kraken.api('Balance', null, function(error, data) {
 						sell(sellVolume, sellPrice);
 					} else {
 						
-						// do some random margin trading, LOL!
+						var mod=0.003;
 
-						// determine a random price
-						var mod = (Math.random() * 0.001) + 0.0026; // 0.0026 goes to kraken
-					
-						// buy some random amount
-						var buyVolume = (currencyBalance / lasttrade) * Math.random() * 0.1;
+						// buy
+						var buyVolume = (currencyBalance / lasttrade) * 0.1;
 						var buyPrice = lasttrade*(1-mod);
-						buy(buyVolume, buyPrice);
-					
-						// sell some random amount
-						var sellVolume = assetBalance * Math.random() * 0.04;
+						if (buyPrice < wavg) buy(buyVolume, buyPrice);
+											
+						// sell
+						var sellVolume = assetBalance * 0.1;
 						var sellPrice = lasttrade * (1+mod);
-						sell(sellVolume, sellPrice);
+						if (sellPrice > wavg) sell(sellVolume, sellPrice);
 					}
 				}
 			}
