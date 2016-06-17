@@ -5,7 +5,7 @@ var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
 
 // get ticker info
 kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, data) {
-	if (!error) log("Trade balance: "+data.result.eb);
+	if (!error) log("Trade balance: "+parseFloat(data.result.eb).toFixed(2));
 	kraken.api('Balance',null, function(error,data) {
 		if (!error) for (var asset in data.result)
 			if (data.result[asset]>=0.00001) log(asset+": "+ parseFloat(data.result[asset]).toFixed(5));
