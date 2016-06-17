@@ -46,7 +46,7 @@ kraken.api('Balance', null, function(error, data) {
 				var lasttrade = data.result[pair].c[0];
 				var daylow = data.result[pair].l[1];
 				var dayhi = data.result[pair].h[1];
-				var wavg = data.result[pair].p[1];
+				var weighedaverage = data.result[pair].p[1];
 	
 				// see if the difference between current and low/hi is less than tolerated spread
 				var distancefromlow = Math.round((lasttrade - daylow) / (dayhi - daylow) * 100);
@@ -76,8 +76,8 @@ kraken.api('Balance', null, function(error, data) {
 						var sellVolume = buyVolume * addonratio;
 						var sellPrice = lasttrade * (1 + addontrade);
 						sell(sellVolume, sellPrice);
-					} 
-					else if (distancefromhi <= sellTolerance) { 
+
+					} else if (distancefromhi <= sellTolerance) { 
 						
 						// we should sell
 
@@ -88,21 +88,24 @@ kraken.api('Balance', null, function(error, data) {
 						var sellVolume = assetBalance * sellRatio * caution;
 						var sellPrice = lasttrade * 0.99999;
 						sell(sellVolume, sellPrice);
+
 					} else {
 						
-						var mod=0.0036;
+						// do some minor trading to stay busy
+
+						var priceMod=0.0036;
 						var buyRatio=0.05;
 						var sellRatio=0.05;
 
 						// buy
 						var buyVolume = (currencyBalance / lasttrade) * buyRatio;
-						var buyPrice = lasttrade*(1-mod);
-						if (buyPrice < wavg) buy(buyVolume, buyPrice);
+						var buyPrice = lasttrade*(1-priceMod);
+						if (buyPrice < weighedaverage) buy(buyVolume, buyPrice);
 											
 						// sell
 						var sellVolume = assetBalance * sellRatio;
-						var sellPrice = lasttrade * (1+mod);
-						if (sellPrice > wavg) sell(sellVolume, sellPrice);
+						var sellPrice = lasttrade * (1+priceMod);
+						if (sellPrice > weighedaverage) sell(sellVolume, sellPrice);
 					}
 				}
 			}
@@ -111,7 +114,7 @@ kraken.api('Balance', null, function(error, data) {
 });
 
 // buy stuff through kraken API
-function buy(buyVolume, buyPrice) {
+function buy(buyVolume, buyPrice) { // asset minTrade minTradeAmount currency pair 
 	if (buyVolume>=minTrade && buyVolume * buyPrice >= minTradeAmount) {
 		log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for "+parseFloat(buyPrice).toFixed(5)+" ("+parseFloat(buyVolume*buyPrice).toFixed(2)+" "+currency+")...");
 		kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": buyVolume, "price": buyPrice}, function(error, data) { if (error) log(error); });
