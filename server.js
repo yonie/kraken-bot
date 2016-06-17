@@ -90,15 +90,17 @@ kraken.api('Balance', null, function(error, data) {
 						sell(sellVolume, sellPrice);
 					} else {
 						
-						var mod=0.003;
+						var mod=0.0036;
+						var buyRatio=0.05;
+						var sellRatio=0.05;
 
 						// buy
-						var buyVolume = (currencyBalance / lasttrade) * 0.1;
+						var buyVolume = (currencyBalance / lasttrade) * buyRatio;
 						var buyPrice = lasttrade*(1-mod);
 						if (buyPrice < wavg) buy(buyVolume, buyPrice);
 											
 						// sell
-						var sellVolume = assetBalance * 0.1;
+						var sellVolume = assetBalance * sellRatio;
 						var sellPrice = lasttrade * (1+mod);
 						if (sellPrice > wavg) sell(sellVolume, sellPrice);
 					}
