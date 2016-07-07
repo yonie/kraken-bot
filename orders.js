@@ -8,7 +8,7 @@ var maxAgeSeconds = settings.maxAgeSeconds;
 if (process.argv>2) maxAgeSeconds=[process.argv[2]];
 
 // max orders allowed by kraken
-var maxOrders = 5200;
+var maxOrders = settings.maxOrders;
 
 // get ticker info
 kraken.api('OpenOrders', null, function(error, data) {
