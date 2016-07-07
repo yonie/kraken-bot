@@ -4,15 +4,30 @@ exports.krakenpasscode = '[your kraken api passcode]';
 
 // tolerance determines how much % near hi or low the lasttrade needs to be to begin acting
 exports.buyTolerance = 45;
-exports.sellTolerance = 20;
-exports.moveLimit = 5;
-exports.caution = 0.1;
-exports.addonratio = 0.1;
-exports.addontrade = 0.001;
+exports.sellTolerance = 45;
 
-// determine the minimum asset amount to trade (this prevents API errors)
+// move limit determines at what point an asset becomes an interesting trade
+exports.moveLimit = 5;
+
+// caution prevents too big transactions at once
+exports.caution = 0.1;
+
+// the addon trade is a sell directly following a buy
+// how much of the bought asset should be sold
+exports.addonratio = 0.1;
+// how much higher should the asking price be
+exports.addontrade = 0.04 + 0.0026; // min 0.0026 
+
+// the margin trade takes place when no significant trade is possible
+// how much of the balance should be used to buy or sell
+exports.marginratio = 0.05;
+// how much above or below last price should the price be
+exports.margintrade = 0.0035 + 0.0026; // min 0.0026 
+
+// determine the minimum amount to trade (this prevents API errors)
 exports.minTrade = 0.01;
-exports.minTradeAmount = 0.50;
+exports.minTradeAmount = 0.01;
 
 // max time an order may exist before cleanup
-export.maxAgeSeconds = 60*60*24*7;
+exports.maxAgeSeconds = 60*60*24;
+exports.maxOrders = 60;
