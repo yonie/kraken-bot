@@ -72,13 +72,15 @@ kraken.api('Balance', null, function(error, data) {
 
 						// determine the volume to buy
 						var buyVolume = (currencyBalance / lasttrade) * buyRatio * caution;
-						var buyPrice = lasttrade * 1.00001;
+						var buyPrice = lasttrade * 1.00005;
 						buy(buyVolume, buyPrice);
 						
-						// try to directly insert a sale order for what we just bought
-						var sellVolume = buyVolume * addonratio;
-						var sellPrice = lasttrade * (1 + addontrade);
-						sell(sellVolume, sellPrice);
+						if (addonratio > 0) {
+							// try to directly insert a sale order for what we just bought
+							var sellVolume = buyVolume * addonratio;
+							var sellPrice = lasttrade * (1 + addontrade);
+							sell(sellVolume, sellPrice);
+						}
 
 					} else if (distancefromhi > 0 && distancefromhi <= sellTolerance) { 
 						
@@ -89,26 +91,89 @@ kraken.api('Balance', null, function(error, data) {
 
 						// determine how much to sell 
 						var sellVolume = assetBalance * sellRatio * caution;
-						var sellPrice = lasttrade * 0.99999;
+						var sellPrice = lasttrade * 0.99995;
 						sell(sellVolume, sellPrice);
 
-					} else {
+					} else if (marginratio > 0) {
 						
 						// if neither, do some minor trading to stay busy
 
 						var priceMod=margintrade;
-						var buyRatio=0;//marginratio;
+						var buyRatio=marginratio/2;
 						var sellRatio=marginratio;
 
-						// buy
+						// volume to trade
 						var buyVolume = (currencyBalance / lasttrade) * buyRatio;
-						var buyPrice = lasttrade * (1 - priceMod);
-						if (buyPrice < weighedaverage) buy(buyVolume, buyPrice);
-											
-						// sell
 						var sellVolume = assetBalance * sellRatio;
-						var sellPrice = lasttrade * (1 + priceMod);
-						if (sellPrice > weighedaverage) sell(sellVolume, sellPrice);
+
+						// get ticker info
+						kraken.api('Spread', {"pair":"XETHZEUR"}, function(error, data) {
+							
+							var bidsarray = data["result"]["XETHZEUR"];
+							var arraysize = Math.min(bidsarray.length,10);
+							var resolution = Math.floor(arraysize/3);
+
+							var spreaddata = [];
+							var lowest;
+							var highest;
+							var average;
+
+							// iterate the array of spread data and get some meaningful averages
+							for (var m=0;m<Math.floor(arraysize/resolution);m++) {
+
+								for (var n=0;n<resolution;n++) {
+
+									var counter = parseFloat(n)+(resolution*parseFloat(m));
+
+									if (n==0) {
+										lowest = bidsarray[counter][1];
+										highest = bidsarray[counter][1];
+									}
+
+									if (bidsarray[counter][1]<lowest) lowest = bidsarray[counter][1];
+									if (bidsarray[counter][1]>highest) highest = bidsarray[counter][1];
+							
+									average = ((parseFloat(lowest) + parseFloat(highest)) / 2).toFixed(5);
+								}
+
+								spreaddata.push(average);
+							}
+							log("Spread analysis (n="+arraysize+"): " + spreaddata);
+
+							// scenario A: falling
+							if (spreaddata[2] < spreaddata[1] && spreaddata[1] < spreaddata[0]) {
+								log("Margin trade / Falling");
+								sell(sellVolume, lasttrade * .99995);
+							}
+							// scenario B: rising
+							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] > spreaddata[0]) {
+								log("Margin trade / Rising");
+								buy(buyVolume, lasttrade * 1.00005);
+								sell(buyVolume, lasttrade * (1+buyRatio));
+							}
+							// scenario E: peak
+							else if (spreaddata[2] < spreaddata[1] && spreaddata[1] > spreaddata[0]) {
+								log("Margin trade / Peak");
+								sell(sellVolume, lasttrade * .99995);
+
+							}
+							// scenario F: dip
+							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] < spreaddata[0]) {
+								log("Margin trade / Dip");
+								buy(buyVolume, lasttrade * 1.00005);
+								sell(buyVolume, lasttrade * (1+buyRatio));
+						
+							}
+							else if (spreaddata[2] == spreaddata[1] && spreaddata[1] == spreaddata[0]) {
+								log("Margin trade / Flat");
+							}
+							else {
+								log("Margin trade / Other");
+							}
+						});
+
+
+
 					}
 				}
 			}
@@ -118,7 +183,7 @@ kraken.api('Balance', null, function(error, data) {
 
 // buy stuff through kraken API
 function buy(buyVolume, buyPrice) { // asset minTrade minTradeAmount currency pair 
-	//log("Checking if we can buy...");
+	log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for " + parseFloat(buyPrice).toFixed(5) + "...");
 	if (buyVolume>=minTrade && buyVolume * buyPrice >= minTradeAmount) {
 		log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for "+parseFloat(buyPrice).toFixed(5)+" ("+parseFloat(buyVolume*buyPrice).toFixed(2)+" "+currency+")...");
 		kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": buyVolume, "price": buyPrice}, function(error, data) { if (error) log(error); });
@@ -127,7 +192,7 @@ function buy(buyVolume, buyPrice) { // asset minTrade minTradeAmount currency pa
 
 // sell stuff through kraken API
 function sell(sellVolume, sellPrice) {
-	//log("Checking if we can sell...");
+	log("Checking if we can sell " + parseFloat(sellVolume).toFixed(5) + " for " + parseFloat(sellPrice).toFixed(5) + "...");
 	if (sellVolume >= minTrade && sellVolume * sellPrice >= minTradeAmount) {
 		log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for "+parseFloat(sellPrice).toFixed(5)+" ("+parseFloat(sellVolume*sellPrice).toFixed(2)+" "+currency+")...");
 		kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": sellVolume, "price": sellPrice}, function(error, data) { if (error) log(error); });
