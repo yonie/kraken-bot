@@ -94,7 +94,7 @@ kraken.api('Balance', null, function(error, data) {
 						var sellPrice = lasttrade * 0.99995;
 						sell(sellVolume, sellPrice);
 
-					} else if (marginratio > 0) {
+					} else if (marginratio > 0 && distancefromlow < 70) {
 						
 						// if neither, do some minor trading to stay busy
 
@@ -149,7 +149,7 @@ kraken.api('Balance', null, function(error, data) {
 							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] > spreaddata[0]) {
 								log("Margin trade / Rising");
 								buy(buyVolume, lasttrade * 1.00005);
-								sell(buyVolume, lasttrade * (1+buyRatio));
+								sell(buyVolume, lasttrade * (1+priceMod));
 							}
 							// scenario E: peak
 							else if (spreaddata[2] < spreaddata[1] && spreaddata[1] > spreaddata[0]) {
@@ -161,7 +161,7 @@ kraken.api('Balance', null, function(error, data) {
 							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] < spreaddata[0]) {
 								log("Margin trade / Dip");
 								buy(buyVolume, lasttrade * 1.00005);
-								sell(buyVolume, lasttrade * (1+buyRatio));
+								sell(buyVolume, lasttrade * (1+priceMod));
 						
 							}
 							else if (spreaddata[2] == spreaddata[1] && spreaddata[1] == spreaddata[0]) {
