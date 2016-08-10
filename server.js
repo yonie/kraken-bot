@@ -107,9 +107,9 @@ kraken.api('Balance', null, function(error, data) {
 						var sellVolume = assetBalance * sellRatio;
 
 						// get ticker info
-						kraken.api('Spread', {"pair":"XETHZEUR"}, function(error, data) {
+						kraken.api('Spread', {"pair":pair}, function(error, data) {
 							
-							var bidsarray = data["result"]["XETHZEUR"];
+							var bidsarray = data["result"][pair];
 							var arraysize = Math.min(bidsarray.length,10);
 							var resolution = Math.floor(arraysize/3);
 
