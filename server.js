@@ -153,18 +153,16 @@ kraken.api('Balance', null, function(error, data) {
 							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] > spreaddata[0]) {
 								log("Margin trade / Rising");
 								buyTimed(buyVolume,lasttrade*1.00001,timer);
-								sell(buyVolume, lasttrade * (1+priceMod));
 							}
 							// scenario E: peak
 							else if (spreaddata[2] < spreaddata[1] && spreaddata[1] > spreaddata[0]) {
 								log("Margin trade / Peak");
-								sellTimed(sellVolume,lasttrade*.99999,timer);
+								sellTimed(sellVolume/10,lasttrade*.99999,timer);
 							}
 							// scenario F: dip
 							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] < spreaddata[0]) {
 								log("Margin trade / Dip");
-								buyTimed(buyVolume,lasttrade*1.00001,timer);
-								sell(buyVolume, lasttrade * (1+priceMod));
+								buyTimed(buyVolume/10,lasttrade*1.00001,timer);
 							}
 							else if (spreaddata[2] == spreaddata[1] && spreaddata[1] == spreaddata[0]) {
 								log("Margin trade / Flat");
