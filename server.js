@@ -10,6 +10,7 @@ var addonratio = settings.addonratio;
 var addontrade = settings.addontrade;
 var marginratio = settings.marginratio;
 var margintrade = settings.margintrade;
+var marginlimit = settings.marginlimit;
 var minTrade = settings.minTrade;
 var minTradeAmount = settings.minTradeAmount;
 
@@ -63,7 +64,10 @@ kraken.api('Balance', null, function(error, data) {
 				if (move >= moveLimit) {
 						
 					// are we buying?
-					if (distancefromlow > 0 && distancefromlow <= buyTolerance) {
+					if (distancefromlow == 0) {
+						// do nothing when asset is rock bottom
+					}
+					else if (distancefromlow > 0 && distancefromlow <= buyTolerance) {
 
 						// we should buy
 	
@@ -94,12 +98,12 @@ kraken.api('Balance', null, function(error, data) {
 						var sellPrice = lasttrade * 0.99995;
 						sell(sellVolume, sellPrice);
 
-					} else if (marginratio > 0 && distancefromlow < 70) {
+					} else if (marginratio > 0 && distancefromlow <= marginlimit) {
 						
 						// if neither, do some minor trading to stay busy
 
 						var priceMod=margintrade;
-						var buyRatio=marginratio/2;
+						var buyRatio=marginratio;
 						var sellRatio=marginratio;
 
 						// volume to trade
@@ -110,7 +114,7 @@ kraken.api('Balance', null, function(error, data) {
 						kraken.api('Spread', {"pair":pair}, function(error, data) {
 							
 							var bidsarray = data["result"][pair];
-							var arraysize = Math.min(bidsarray.length,10);
+							var arraysize = bidsarray.length;
 							var resolution = Math.floor(arraysize/3);
 
 							var spreaddata = [];
@@ -133,35 +137,34 @@ kraken.api('Balance', null, function(error, data) {
 									if (bidsarray[counter][1]<lowest) lowest = bidsarray[counter][1];
 									if (bidsarray[counter][1]>highest) highest = bidsarray[counter][1];
 							
-									average = ((parseFloat(lowest) + parseFloat(highest)) / 2).toFixed(5);
+									average = (parseFloat(lowest) + parseFloat(highest)) / 2;
 								}
 
 								spreaddata.push(average);
 							}
-							log("Spread analysis (n="+arraysize+"): " + spreaddata);
 
 							// scenario A: falling
 							if (spreaddata[2] < spreaddata[1] && spreaddata[1] < spreaddata[0]) {
 								log("Margin trade / Falling");
-								sell(sellVolume, lasttrade * .99995);
+								sellMarket(sellVolume);
 							}
 							// scenario B: rising
 							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] > spreaddata[0]) {
 								log("Margin trade / Rising");
-								buy(buyVolume, lasttrade * 1.00005);
-								sell(buyVolume, lasttrade * (1+priceMod));
+								buyMarket(buyVolume);
+								//sell(buyVolume, lasttrade * (1+priceMod));
 							}
 							// scenario E: peak
 							else if (spreaddata[2] < spreaddata[1] && spreaddata[1] > spreaddata[0]) {
 								log("Margin trade / Peak");
-								sell(sellVolume, lasttrade * .99995);
+								sellMarket(sellVolume);
 
 							}
 							// scenario F: dip
 							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] < spreaddata[0]) {
 								log("Margin trade / Dip");
-								buy(buyVolume, lasttrade * 1.00005);
-								sell(buyVolume, lasttrade * (1+priceMod));
+								buyMarket(buyVolume);
+								//sell(buyVolume, lasttrade * (1+priceMod));
 						
 							}
 							else if (spreaddata[2] == spreaddata[1] && spreaddata[1] == spreaddata[0]) {
@@ -181,12 +184,30 @@ kraken.api('Balance', null, function(error, data) {
 	}
 });
 
+// buy stuff for market price
+function buyMarket(buyVolume) {
+	log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for market...");
+	if (buyVolume>=minTrade) {
+		log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for market...");
+		kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "market", "volume": buyVolume}, function(error, data) { if (error) log(error); });
+	}
+}
+
 // buy stuff through kraken API
 function buy(buyVolume, buyPrice) { // asset minTrade minTradeAmount currency pair 
 	log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for " + parseFloat(buyPrice).toFixed(5) + "...");
 	if (buyVolume>=minTrade && buyVolume * buyPrice >= minTradeAmount) {
 		log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for "+parseFloat(buyPrice).toFixed(5)+" ("+parseFloat(buyVolume*buyPrice).toFixed(2)+" "+currency+")...");
 		kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": buyVolume, "price": buyPrice}, function(error, data) { if (error) log(error); });
+	}
+}
+
+// sell for market
+function sellMarket(sellVolume) {
+	log("Checking if we can sell " + parseFloat(sellVolume).toFixed(5) + " for market...");
+	if (sellVolume >= minTrade) {
+		log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for market...");
+		kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "market", "volume": sellVolume}, function(error, data) { if (error) log(error); });
 	}
 }
 
