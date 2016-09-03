@@ -116,6 +116,7 @@ kraken.api('Balance', null, function(error, data) {
 							var bidsarray = data["result"][pair];
 							var arraysize = bidsarray.length;
 							var resolution = Math.floor(arraysize/3);
+							var timer = 30;
 
 							var spreaddata = [];
 							var lowest;
@@ -146,26 +147,24 @@ kraken.api('Balance', null, function(error, data) {
 							// scenario A: falling
 							if (spreaddata[2] < spreaddata[1] && spreaddata[1] < spreaddata[0]) {
 								log("Margin trade / Falling");
-								sellMarket(sellVolume);
+								sellTimed(sellVolume,lasttrade*.99999,timer);
 							}
 							// scenario B: rising
 							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] > spreaddata[0]) {
 								log("Margin trade / Rising");
-								buyMarket(buyVolume);
-								//sell(buyVolume, lasttrade * (1+priceMod));
+								buyTimed(buyVolume,lasttrade*1.00001,timer);
+								sell(buyVolume, lasttrade * (1+priceMod));
 							}
 							// scenario E: peak
 							else if (spreaddata[2] < spreaddata[1] && spreaddata[1] > spreaddata[0]) {
 								log("Margin trade / Peak");
-								sellMarket(sellVolume);
-
+								sellTimed(sellVolume,lasttrade*.99999,timer);
 							}
 							// scenario F: dip
 							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] < spreaddata[0]) {
 								log("Margin trade / Dip");
-								buyMarket(buyVolume);
-								//sell(buyVolume, lasttrade * (1+priceMod));
-						
+								buyTimed(buyVolume,lasttrade*1.00001,timer);
+								sell(buyVolume, lasttrade * (1+priceMod));
 							}
 							else if (spreaddata[2] == spreaddata[1] && spreaddata[1] == spreaddata[0]) {
 								log("Margin trade / Flat");
@@ -184,7 +183,7 @@ kraken.api('Balance', null, function(error, data) {
 	}
 });
 
-// buy stuff for market price
+// buy stuff for market price, NOTE: destroys your balance :-)
 function buyMarket(buyVolume) {
 	log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for market...");
 	if (buyVolume>=minTrade) {
@@ -202,7 +201,16 @@ function buy(buyVolume, buyPrice) { // asset minTrade minTradeAmount currency pa
 	}
 }
 
-// sell for market
+// buy with a built in timer
+function buyTimed(buyVolume, buyPrice, timer) {
+	log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for " + parseFloat(buyPrice).toFixed(5) + " (timed)...");
+	if (buyVolume>=minTrade && buyVolume * buyPrice >= minTradeAmount) {
+		log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for "+parseFloat(buyPrice).toFixed(5)+" ("+parseFloat(buyVolume*buyPrice).toFixed(2)+" "+currency+")...");
+		kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": buyVolume, "price": buyPrice, "expiretm" : "+"+timer}, function(error, data) { if (error) log(error); });
+	}
+}
+
+// sell for market, NOTE: destroys your balance :-)
 function sellMarket(sellVolume) {
 	log("Checking if we can sell " + parseFloat(sellVolume).toFixed(5) + " for market...");
 	if (sellVolume >= minTrade) {
@@ -217,6 +225,15 @@ function sell(sellVolume, sellPrice) {
 	if (sellVolume >= minTrade && sellVolume * sellPrice >= minTradeAmount) {
 		log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for "+parseFloat(sellPrice).toFixed(5)+" ("+parseFloat(sellVolume*sellPrice).toFixed(2)+" "+currency+")...");
 		kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": sellVolume, "price": sellPrice}, function(error, data) { if (error) log(error); });
+	}
+}
+
+// sell with a built in timer
+function sellTimed(sellVolume, sellPrice, timer) {
+	log("Checking if we can sell " + parseFloat(sellVolume).toFixed(5) + " for " + parseFloat(sellPrice).toFixed(5) + " (timed)...");
+	if (sellVolume >= minTrade && sellVolume * sellPrice >= minTradeAmount) {
+		log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for "+parseFloat(sellPrice).toFixed(5)+" ("+parseFloat(sellVolume*sellPrice).toFixed(2)+" "+currency+")...");
+		kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": sellVolume, "price": sellPrice, "expiretm": "+"+timer}, function(error, data) { if (error) log(error); });
 	}
 }
 
