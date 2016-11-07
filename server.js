@@ -6,13 +6,10 @@ var buyTolerance = settings.buyTolerance;
 var sellTolerance = settings.sellTolerance;
 var moveLimit = settings.moveLimit;
 var caution = settings.caution;
-var addonratio = settings.addonratio;
-var addontrade = settings.addontrade;
-var marginratio = settings.marginratio;
-var margintrade = settings.margintrade;
-var marginlimit = settings.marginlimit;
+var priceMod = settings.priceMod;
 var minTrade = settings.minTrade;
 var minTradeAmount = settings.minTradeAmount;
+var timer = settings.timer;
 
 // set up kraken api
 var KrakenClient = require('kraken-api');
@@ -32,6 +29,7 @@ if (process.argv.length < 4) {
 // add currency to make the trade pair
 var pair = asset+currency;
 
+
 // first get our balance			
 kraken.api('Balance', null, function(error, data) {
 	if(error) {
@@ -48,6 +46,7 @@ kraken.api('Balance', null, function(error, data) {
 			} else {
 				// fetch data from the kraken ticker
 				var lasttrade = data.result[pair].c[0];
+				var bid = data.result[pair].b[0];//todo
 				var daylow = data.result[pair].l[1];
 				var dayhi = data.result[pair].h[1];
 				var weighedaverage = data.result[pair].p[1];
@@ -60,184 +59,100 @@ kraken.api('Balance', null, function(error, data) {
 				// output fancy graph
 				log(createGraph(lasttrade, distancefromlow, daylow, dayhi, buyTolerance, sellTolerance));
 			
-				// see if we are going to trade at all
-				if (move >= moveLimit) {
-						
-					// are we buying?
-					if (distancefromlow == 0) {
-						// do nothing when asset is rock bottom
-					}
-					else if (distancefromlow > 0 && distancefromlow <= buyTolerance) {
+				// get ticker info
+				kraken.api('Spread', {"pair":pair}, function(error, data) {
+					if(error) {
+						//log(error);
+					} else {
+						var bidsarray = data["result"][pair];
+						var arraysize = bidsarray.length;
+						var resolution = Math.floor(arraysize/3);
+						var timer = 60;
+						var spreaddata = [];
+						var lowest;
+						var highest;
+						var average;
+						var direction;
+		
+						// iterate the array of spread data and get some meaningful averages
+						for (var m=0;m<Math.floor(arraysize/resolution);m++) {
 
-						// we should buy
-	
-						// buy ratio, the closer to 0 the more to buy
-						var buyRatio = 1 - (distancefromlow / buyTolerance)
+							for (var n=0;n<resolution;n++) {
 
-						// determine the volume to buy
-						var buyVolume = (currencyBalance / lasttrade) * buyRatio * caution;
-						var buyPrice = lasttrade * 0.9974;
-						buyTimed(buyVolume, buyPrice, 60);
+								var counter = parseFloat(n)+(resolution*parseFloat(m));
+
+								if (n==0) {
+									lowest = bidsarray[counter][1];
+									highest = bidsarray[counter][1];
+								}
+
+								if (bidsarray[counter][1]<lowest) lowest = bidsarray[counter][1];
+								if (bidsarray[counter][1]>highest) highest = bidsarray[counter][1];
 						
-						if (addonratio > 0) {
-							// try to directly insert a sale order for what we just bought
-							var sellVolume = buyVolume * addonratio;
-							var sellPrice = lasttrade * (1 + addontrade);
-							sell(sellVolume, sellPrice);
+								average = (parseFloat(lowest) + parseFloat(highest)) / 2;
+							}
+							
+							// add the average to the array
+							spreaddata.push(average);
 						}
 
-					} else if (distancefromhi > 0 && distancefromhi <= sellTolerance) { 
+						// scenario: falling
+						if (spreaddata[2] < spreaddata[1] && spreaddata[1] < spreaddata[0]) {
+							direction = "falling";
+						}
+						// scenario: rising
+						else if (spreaddata[2] > spreaddata[1] && spreaddata[1] > spreaddata[0]) {
+							direction = "rising";
+						}
+						// scenario: peak
+						else if (spreaddata[2] < spreaddata[1] && spreaddata[1] > spreaddata[0]) {
+							direction = "peak";
+						}
+						// scenario: dip
+						else if (spreaddata[2] > spreaddata[1] && spreaddata[1] < spreaddata[0]) {
+							direction = "dip";
+						}
+						// scenario: flat
+						else if (spreaddata[2] == spreaddata[1] && spreaddata[1] == spreaddata[0]) {
+							direction = "flat";
+						}
+						// scenario: Other
+						else {
+							direction = "other";
+						}
+
+						var velocity = parseFloat(((spreaddata[2]-spreaddata[0])/spreaddata[0])*100).toFixed(2);
+						log(direction + " " + velocity + "%");
 						
-						// otherwise, we should sell
+						var buyPrice = lasttrade * (1-priceMod);
+						var buyVolume = (currencyBalance / buyPrice);
+						var sellPrice = lasttrade * (1+priceMod);
 
-						// sell ratio, the closer to 0 the more to buy
-						var sellRatio = 1 - (distancefromhi / sellTolerance)
-
-						// determine how much to sell 
-						var sellVolume = assetBalance * sellRatio * caution;
-						var sellPrice = lasttrade * 1.0026;
-						sellTimed(sellVolume, sellPrice, 60);
-
-					} else if (marginratio > 0 && distancefromlow <= marginlimit) {
-						
-						// if neither, do some minor trading to stay busy
-
-						var priceMod=margintrade;
-						var buyRatio=marginratio;
-						var sellRatio=marginratio;
-
-						// volume to trade
-						var buyVolume = (currencyBalance / lasttrade) * buyRatio;
-						var sellVolume = assetBalance * sellRatio;
-
-						// get ticker info
-						kraken.api('Spread', {"pair":pair}, function(error, data) {
-							
-							var bidsarray = data["result"][pair];
-							var arraysize = bidsarray.length;
-							var resolution = Math.floor(arraysize/3);
-							var timer = 60;
-
-							var spreaddata = [];
-							var lowest;
-							var highest;
-							var average;
-
-							// iterate the array of spread data and get some meaningful averages
-							for (var m=0;m<Math.floor(arraysize/resolution);m++) {
-
-								for (var n=0;n<resolution;n++) {
-
-									var counter = parseFloat(n)+(resolution*parseFloat(m));
-
-									if (n==0) {
-										lowest = bidsarray[counter][1];
-										highest = bidsarray[counter][1];
-									}
-
-									if (bidsarray[counter][1]<lowest) lowest = bidsarray[counter][1];
-									if (bidsarray[counter][1]>highest) highest = bidsarray[counter][1];
-							
-									average = (parseFloat(lowest) + parseFloat(highest)) / 2;
-								}
-								
-								// add the average to the array
-								spreaddata.push(average);
-							}
-
-							// scenario: falling
-							if (spreaddata[2] < spreaddata[1] && spreaddata[1] < spreaddata[0]) {
-								// we should get rid of our stock
-								log("Margin trade / Falling");
-								sellTimed(sellVolume,lasttrade*(1+priceMod),timer);
-							}
-							// scenario: rising
-							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] > spreaddata[0]) {
-								// we should try to get more stock
-								log("Margin trade / Rising");
-								buyTimed(buyVolume,lasttrade*(1-priceMod),timer);
-								sellTimed(buyVolume,lasttrade*(1-priceMod)*1.01,3600);
-							}
-							// scenario: peak
-							else if (spreaddata[2] < spreaddata[1] && spreaddata[1] > spreaddata[0]) {
-								// time to get rid of some stock
-								log("Margin trade / Peak");
-								sellTimed(sellVolume/2,lasttrade*(1+priceMod),timer);
-							}
-							// scenario: dip
-							else if (spreaddata[2] > spreaddata[1] && spreaddata[1] < spreaddata[0]) {
-								// time to buy some stock
-								log("Margin trade / Dip");
-								buyTimed(buyVolume/2,lasttrade*(1-priceMod),timer);
-								sellTimed(buyVolume/2,lasttrade*(1-priceMod)*1.01,3600);
-							}
-							// scenario: flat
-							else if (spreaddata[2] == spreaddata[1] && spreaddata[1] == spreaddata[0]) {
-								log("Margin trade / Flat");
-							}
-							// scenario: Other
-							else {
-								log("Margin trade / Other");
-							}
-						});
-
-
+						// determine to buy/sell
+						if (move < moveLimit) sellTimed(assetBalance, sellPrice, timer);
+						else if (distancefromlow == 0 && direction == "falling") sellTimed(assetBalance, sellPrice, timer);
+						else if (distancefromlow > 5 && distancefromlow <= buyTolerance && direction == "rising" && velocity > 0.05) buyTimed(buyVolume, buyPrice, timer);
+						else if (distancefromhi <= sellTolerance && direction == "falling" && velocity < -0.05) sellTimed(assetBalance, sellPrice, timer);
 
 					}
-				}
+				});
 			}
 		});
 	}
 });
 
-// buy stuff for market price, NOTE: destroys your balance :-)
-function buyMarket(buyVolume) {
-	log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for market...");
-	if (buyVolume>=minTrade) {
-		log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for market...");
-		kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "market", "volume": buyVolume}, function(error, data) { if (error) log(error); });
-	}
-}
-
-// buy stuff for a given price
-function buy(buyVolume, buyPrice) { // asset minTrade minTradeAmount currency pair 
-	log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for " + parseFloat(buyPrice).toFixed(5) + "...");
-	if (buyVolume>=minTrade && buyVolume * buyPrice >= minTradeAmount) {
-		log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for "+parseFloat(buyPrice).toFixed(5)+" ("+parseFloat(buyVolume*buyPrice).toFixed(2)+" "+currency+")...");
-		kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": buyVolume, "price": buyPrice}, function(error, data) { if (error) log(error); });
-	}
-}
-
 // buy for a given price with built in timer
 function buyTimed(buyVolume, buyPrice, timer) {
-	log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for " + parseFloat(buyPrice).toFixed(5) + " (timed "+timer+")...");
+	//log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for " + parseFloat(buyPrice).toFixed(5) + " (timed "+timer+")...");
 	if (buyVolume>=minTrade && buyVolume * buyPrice >= minTradeAmount) {
 		log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for "+parseFloat(buyPrice).toFixed(5)+" ("+parseFloat(buyVolume*buyPrice).toFixed(2)+" "+currency+")...");
 		kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": buyVolume, "price": buyPrice, "expiretm" : "+"+timer}, function(error, data) { if (error) log(error); });
 	}
 }
 
-// sell for market, NOTE: destroys your balance :-)
-function sellMarket(sellVolume) {
-	log("Checking if we can sell " + parseFloat(sellVolume).toFixed(5) + " for market...");
-	if (sellVolume >= minTrade) {
-		log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for market...");
-		kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "market", "volume": sellVolume}, function(error, data) { if (error) log(error); });
-	}
-}
-
-// sell stuff for a given price 
-function sell(sellVolume, sellPrice) {
-	log("Checking if we can sell " + parseFloat(sellVolume).toFixed(5) + " for " + parseFloat(sellPrice).toFixed(5) + "...");
-	if (sellVolume >= minTrade && sellVolume * sellPrice >= minTradeAmount) {
-		log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for "+parseFloat(sellPrice).toFixed(5)+" ("+parseFloat(sellVolume*sellPrice).toFixed(2)+" "+currency+")...");
-		kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": sellVolume, "price": sellPrice}, function(error, data) { if (error) log(error); });
-	}
-}
-
 // sell for a given price with built in timer
 function sellTimed(sellVolume, sellPrice, timer) {
-	log("Checking if we can sell " + parseFloat(sellVolume).toFixed(5) + " for " + parseFloat(sellPrice).toFixed(5) + " (timed "+timer+")...");
+	//log("Checking if we can sell " + parseFloat(sellVolume).toFixed(5) + " for " + parseFloat(sellPrice).toFixed(5) + " (timed "+timer+")...");
 	if (sellVolume >= minTrade && sellVolume * sellPrice >= minTradeAmount) {
 		log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for "+parseFloat(sellPrice).toFixed(5)+" ("+parseFloat(sellVolume*sellPrice).toFixed(2)+" "+currency+")...");
 		kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": sellVolume, "price": sellPrice, "expiretm": "+"+timer}, function(error, data) { if (error) log(error); });

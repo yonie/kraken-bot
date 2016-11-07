@@ -7,9 +7,6 @@ var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
 var maxAgeSeconds = settings.maxAgeSeconds;
 if (process.argv>2) maxAgeSeconds=[process.argv[2]];
 
-// max orders allowed by kraken
-var maxOrders = settings.maxOrders;
-
 // get ticker info
 kraken.api('OpenOrders', null, function(error, data) {
 	if (error) log(error);
@@ -29,7 +26,7 @@ kraken.api('OpenOrders', null, function(error, data) {
 			orderTime = data.result.open[order].opentm;
 			orderType = data.result.open[order].descr.type;
 			// cancel order if it is too old
-			if ((orderTime + maxAgeSeconds < currentTime || numOrders > maxOrders)) {
+			if (orderTime + maxAgeSeconds < currentTime) {
 				log("Cancelling order #" + numOrders + " " + order + "...");
 				kraken.api('CancelOrder', { "txid" : order }, function (error, data) { 
 					if (error) log(error);
