@@ -129,10 +129,10 @@ kraken.api('Balance', null, function(error, data) {
 						var sellPrice = lasttrade * (1+priceMod);
 
 						// determine to buy/sell
-						if (move < moveLimit) sellTimed(assetBalance, sellPrice, timer);
-						else if (distancefromlow == 0 && direction == "falling") sellTimed(assetBalance, sellPrice, timer);
-						else if (distancefromlow > 5 && distancefromlow <= buyTolerance && direction == "rising" && velocity > 0.05) buyTimed(buyVolume, buyPrice, timer);
-						else if (distancefromhi <= sellTolerance && direction == "falling" && velocity < -0.05) sellTimed(assetBalance, sellPrice, timer);
+						if (move < moveLimit) { } 
+						//else if (distancefromlow == 0 && direction == "falling") sellTimed(assetBalance * caution, sellPrice, timer);
+						else if (distancefromlow > 5 && distancefromlow <= buyTolerance && direction == "rising" && velocity >= 0.02) buy(buyVolume * caution, buyPrice, timer, 2, moveLimit-1);
+						//else if (distancefromhi > 10 && distancefromhi <= sellTolerance && direction == "falling" && velocity < -0.05) sellTimed(assetBalance * caution, sellPrice, timer);
 
 					}
 				});
@@ -141,21 +141,28 @@ kraken.api('Balance', null, function(error, data) {
 	}
 });
 
-// buy for a given price with built in timer
-function buyTimed(buyVolume, buyPrice, timer) {
-	//log("Checking if we can buy " + parseFloat(buyVolume).toFixed(5) + " for " + parseFloat(buyPrice).toFixed(5) + " (timed "+timer+")...");
-	if (buyVolume>=minTrade && buyVolume * buyPrice >= minTradeAmount) {
-		log("[TRADE] Buying " + parseFloat(buyVolume).toFixed(5) + " of " + asset + " for "+parseFloat(buyPrice).toFixed(5)+" ("+parseFloat(buyVolume*buyPrice).toFixed(2)+" "+currency+")...");
-		kraken.api('AddOrder', {"pair": pair, "type": "buy", "ordertype": "limit", "volume": buyVolume, "price": buyPrice, "expiretm" : "+"+timer}, function(error, data) { if (error) log(error); });
-	}
-}
+// buy for a given price with built in timer with stop loss and profit close order
+function buy(buyVolume, buyPrice, timer, stopLossPrice, profitPrice) {
+	
+	if (buyVolume>=minTrade && (buyVolume * buyPrice) >= minTradeAmount) {
 
-// sell for a given price with built in timer
-function sellTimed(sellVolume, sellPrice, timer) {
-	//log("Checking if we can sell " + parseFloat(sellVolume).toFixed(5) + " for " + parseFloat(sellPrice).toFixed(5) + " (timed "+timer+")...");
-	if (sellVolume >= minTrade && sellVolume * sellPrice >= minTradeAmount) {
-		log("[TRADE] Selling " + parseFloat(sellVolume).toFixed(5) + " of " + asset + " for "+parseFloat(sellPrice).toFixed(5)+" ("+parseFloat(sellVolume*sellPrice).toFixed(2)+" "+currency+")...");
-		kraken.api('AddOrder', {"pair": pair, "type": "sell", "ordertype": "limit", "volume": sellVolume, "price": sellPrice, "expiretm": "+"+timer}, function(error, data) { if (error) log(error); });
+		return kraken.api('AddOrder', {
+			"pair" : pair, 
+			"type" : "buy", 
+			"ordertype" :  "limit", 
+			"volume" : buyVolume, 
+			"price" : buyPrice, 
+			"expiretm" : "+"+timer, 
+			"close[ordertype]": "stop-loss-profit",
+			"close[price]" : "#"+stopLossPrice+"%",
+			"close[price2]" : "#"+profitPrice+"%"
+		}, function(error, data) { 
+			if (error) log(error); 
+			else if (data) {
+				log("[TRADE] " + data["result"]["descr"]["order"]);
+				log("[TRADE] " + data["result"]["descr"]["close"]);
+			}
+		});
 	}
 }
 
