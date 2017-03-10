@@ -3,12 +3,23 @@ var settings = require("./settings.js");
 var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
 
-// get ticker info
-kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, data) {
-	if (!error) log("Trade balance: "+parseFloat(data.result.eb).toFixed(2));
-	kraken.api('Balance',null, function(error,data) {
-		if (!error) for (var asset in data.result)
-			if (data.result[asset]>=0.00001) log(asset+": "+ parseFloat(data.result[asset]).toFixed(5));
+// get trade balance info
+kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, tradeBalanceData) {
+	if (!error) log("Trade balance: "+parseFloat(tradeBalanceData.result.eb).toFixed(2));
+	// get asset balance
+	kraken.api('Balance',null, function(error,balanceData) {
+		if (!error) {
+			// get ticker info to determine total value
+			kraken.api('Ticker', {"pair":"XETCZEUR,XETHZEUR,XLTCZEUR,XREPZEUR,XXBTZEUR,XXLMZEUR,XXMRZEUR,XZECZEUR"}, function(error,tickerData) {
+				for (var asset in balanceData.result) {
+					if (balanceData.result[asset]!=null && balanceData.result[asset]>=0.00001) {
+						var logString = asset+": " + parseFloat(balanceData.result[asset]).toFixed(5);
+						if (asset!="ZEUR") logString = logString + " for " + tickerData.result[asset+"ZEUR"].c[0] + " = "+parseFloat(balanceData.result[asset]*tickerData.result[asset+"ZEUR"].c[0]).toFixed(2)+" ZEUR";
+						log(logString);
+					}
+				}
+			});
+		}
 	});	
 });
 
