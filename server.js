@@ -67,7 +67,6 @@ kraken.api('Balance', null, function(error, data) {
 						var bidsarray = data["result"][pair];
 						var arraysize = bidsarray.length;
 						var resolution = Math.floor(arraysize/3);
-						var timer = 60;
 						var spreaddata = [];
 						var lowest;
 						var highest;
@@ -130,9 +129,9 @@ kraken.api('Balance', null, function(error, data) {
 
 						// determine to buy/sell
 						if (move < moveLimit) { } 
-						//else if (distancefromlow == 0 && direction == "falling") sellTimed(assetBalance * caution, sellPrice, timer);
-						else if (distancefromlow > 5 && distancefromlow <= buyTolerance && direction == "rising" && velocity >= 0.02) buy(buyVolume * caution, buyPrice, timer, 2, moveLimit-1);
-						//else if (distancefromhi > 10 && distancefromhi <= sellTolerance && direction == "falling" && velocity < -0.05) sellTimed(assetBalance * caution, sellPrice, timer);
+//						else if (distancefromlow <= buyTolerance) buy(buyVolume * caution, buyPrice, timer, 1, moveLimit*.75);
+						else if (distancefromlow <= buyTolerance) buy(buyVolume * caution, buyPrice, timer, 1, move*.75);
+//						else if (velocity > 0.5) buy(buyVolume * caution * 0.5, buyPrice, timer, 1, move*.25);
 
 					}
 				});
@@ -153,9 +152,11 @@ function buy(buyVolume, buyPrice, timer, stopLossPrice, profitPrice) {
 			"volume" : buyVolume, 
 			"price" : buyPrice, 
 			"expiretm" : "+"+timer, 
-			"close[ordertype]": "stop-loss-profit",
-			"close[price]" : "#"+stopLossPrice+"%",
-			"close[price2]" : "#"+profitPrice+"%"
+			//"close[ordertype]": "stop-loss-profit",
+			"close[ordertype]": "take-profit",
+			//"close[price]" : "#"+stopLossPrice+"%",
+			//"close[price2]" : "#"+profitPrice+"%"
+			"close[price]" : "#"+profitPrice+"%"
 		}, function(error, data) { 
 			if (error) log(error); 
 			else if (data) {
