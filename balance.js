@@ -12,9 +12,9 @@ kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, tradeBalanceData) {
 			// get ticker info to determine total value
 			kraken.api('Ticker', {"pair":"XETCZEUR,XETHZEUR,XLTCZEUR,XREPZEUR,XXBTZEUR,XXLMZEUR,XXMRZEUR,XZECZEUR"}, function(error,tickerData) {
 				for (var asset in balanceData.result) {
-					if (balanceData.result[asset]!=null && balanceData.result[asset]>=0.00001) {
+					if (balanceData.result[asset] && balanceData.result[asset]>=0.00001) {
 						var logString = asset+": " + parseFloat(balanceData.result[asset]).toFixed(5);
-						if (asset!="ZEUR") logString = logString + " for " + tickerData.result[asset+"ZEUR"].c[0] + " = "+parseFloat(balanceData.result[asset]*tickerData.result[asset+"ZEUR"].c[0]).toFixed(2)+" ZEUR";
+						if (tickerData.result[asset+"ZEUR"]) logString = logString + " for " + tickerData.result[asset+"ZEUR"].c[0] + " = "+parseFloat(balanceData.result[asset]*tickerData.result[asset+"ZEUR"].c[0]).toFixed(2)+" ZEUR";
 						log(logString);
 					}
 				}
