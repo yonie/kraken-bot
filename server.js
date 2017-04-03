@@ -124,14 +124,14 @@ kraken.api('Balance', null, function(error, data) {
 						log(direction + " " + velocity + "%");
 						
 						var buyPrice = lasttrade * (1-priceMod);
-						var buyVolume = (currencyBalance / buyPrice);
-						var sellPrice = lasttrade * (1+priceMod);
+						var buyVolume = (currencyBalance / buyPrice) * caution;
 
 						// determine to buy/sell
-						if (move < moveLimit) { } 
-//						else if (distancefromlow <= buyTolerance) buy(buyVolume * caution, buyPrice, timer, 1, moveLimit*.75);
-						else if (distancefromlow <= buyTolerance) buy(buyVolume * caution, buyPrice, timer, 1, move*.75);
-//						else if (velocity > 0.5) buy(buyVolume * caution * 0.5, buyPrice, timer, 1, move*.25);
+						if (move < moveLimit) { } // only trade sufficient move
+						else if (currency == "ZEUR" && (buyVolume * buyPrice < 1)) { } // dont trade too low 
+						else if (currency == "XXBT" && (buyVolume * buyPrice < 0.001)) { } // dont trade too low
+						else if (currency == "XETH" && (buyVolume * buyPrice < 0.025)) { } // dont trade too low
+						else if (distancefromlow <= buyTolerance) buy(buyVolume, buyPrice, timer, 1, move*.75);
 
 					}
 				});
@@ -152,10 +152,7 @@ function buy(buyVolume, buyPrice, timer, stopLossPrice, profitPrice) {
 			"volume" : buyVolume, 
 			"price" : buyPrice, 
 			"expiretm" : "+"+timer, 
-			//"close[ordertype]": "stop-loss-profit",
 			"close[ordertype]": "take-profit",
-			//"close[price]" : "#"+stopLossPrice+"%",
-			//"close[price2]" : "#"+profitPrice+"%"
 			"close[price]" : "#"+profitPrice+"%"
 		}, function(error, data) { 
 			if (error) log(error); 
