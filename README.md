@@ -1,6 +1,6 @@
 ## Synopsis
 
-This project makes use of the Kraken API to to some basic automated trading. 
+This project makes use of the Kraken API to do some basic automated trading. 
 
 ## Code Example
 
@@ -10,7 +10,9 @@ will run the bot for one go, and do some trading trade if applicable. it default
 
 npm start XXBT
 
-will run the bot on the XXBT cryptocurrency. 
+will run the bot on the XXBT cryptocurrency with ZEUR as currency. 
+
+it can also simply be run by calling nodejs server.js
 
 ## Motivation
 
@@ -23,7 +25,7 @@ To use;
 1. rename settings.js.example to settings.js and provide with proper keys
 2. be sure to set the proper default cryptocurrency and limits
 3. npm -i
-4. nodejs server.js (or npm start)
+4. nodejs server.js
 
 Note that the bot is set to use EUR currency. 
 
