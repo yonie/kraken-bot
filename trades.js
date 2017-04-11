@@ -3,6 +3,9 @@ var settings = require("./settings.js");
 var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
 
+// logging
+var log = require('./log.js');
+
 // get trade balance info
 kraken.api('TradesHistory', null, function(error, tradesHistoryData) {
 	if (!error) for (var trade in tradesHistoryData.result.trades) {

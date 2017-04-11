@@ -36,7 +36,7 @@ var pair = asset+currency;
 // first get our balance			
 kraken.api('Balance', null, function(error, data) {
 	if(error) {
-		log(error);
+		log(error,asset);
 	} else {
 		var currencyBalance = data.result[currency];
 		var assetBalance = data.result[asset];
@@ -45,7 +45,7 @@ kraken.api('Balance', null, function(error, data) {
 		kraken.api('Ticker', {"pair": pair}, function(error, data) {
 	
 			if(error) {
-				//log(error);
+			
 			} else {
 				// fetch data from the kraken ticker
 				var lasttrade = data.result[pair].c[0];
@@ -60,12 +60,12 @@ kraken.api('Balance', null, function(error, data) {
 				var move = Math.round(((dayhi - daylow) / dayhi) * 100);
 					
 				// output fancy graph
-				log(createGraph(lasttrade, distancefromlow, daylow, dayhi, buyTolerance, sellTolerance));
+				log(createGraph(lasttrade, distancefromlow, daylow, dayhi, buyTolerance, sellTolerance),asset);
 			
 				// get ticker info
 				kraken.api('Spread', {"pair":pair}, function(error, data) {
 					if(error) {
-						//log(error);
+	
 					} else {
 						var bidsarray = data["result"][pair];
 						var arraysize = bidsarray.length;
@@ -124,7 +124,7 @@ kraken.api('Balance', null, function(error, data) {
 						}
 
 						var velocity = parseFloat(((spreaddata[2]-spreaddata[0])/spreaddata[0])*100).toFixed(2);
-						log(direction + " " + velocity + "%");
+						log(direction + " " + velocity + "%", asset);
 						
 						var buyPrice = lasttrade * (1-priceMod);
 						var buyVolume = (currencyBalance / buyPrice) * caution;
@@ -158,10 +158,12 @@ function buy(buyVolume, buyPrice, timer, stopLossPrice, profitPrice) {
 			"close[ordertype]": "take-profit",
 			"close[price]" : "#"+profitPrice+"%"
 		}, function(error, data) { 
-			if (error) log(error); 
+			if (error) {
+			
+			}
 			else if (data) {
-				log("[TRADE] " + data["result"]["descr"]["order"]);
-				log("[TRADE] " + data["result"]["descr"]["close"]);
+				log("[TRADE] " + data["result"]["descr"]["order"], asset);
+				log("[TRADE] " + data["result"]["descr"]["close"], asset);
 			}
 		});
 	}

@@ -3,6 +3,9 @@ var settings = require("./settings.js");
 var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(settings.krakenkey,settings.krakenpasscode);
 
+// logging
+var log = require('./log.js');
+
 // get trade balance info
 kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, tradeBalanceData) {
 	if (!error) log("Trade balance: "+parseFloat(tradeBalanceData.result.eb).toFixed(2));
@@ -22,10 +25,3 @@ kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, tradeBalanceData) {
 		}
 	});	
 });
-
-// simple log helper function
-function log(string) {
-	var d = new Date();
-	var datestring = ("0" + d.getDate()).slice(-2) + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + d.getFullYear() + " " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
-	console.log(datestring + " " + string);
-}
