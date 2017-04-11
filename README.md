@@ -6,7 +6,7 @@ This project makes use of the Kraken API to do some basic automated trading.
 
 npm start 
 
-will run the bot for one go, and do some trading trade if applicable. it defaults to the XLTC cryptocurrency.
+will run the bot for one go, and do some trading trade if applicable.
 
 npm start XXBT
 
