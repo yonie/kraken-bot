@@ -36,7 +36,7 @@ var pair = asset+currency;
 // first get our balance			
 kraken.api('Balance', null, function(error, data) {
 	if(error) {
-		log(error,asset);
+		log(error,pair);
 	} else {
 		var currencyBalance = data.result[currency];
 		var assetBalance = data.result[asset];
@@ -60,7 +60,7 @@ kraken.api('Balance', null, function(error, data) {
 				var move = Math.round(((dayhi - daylow) / dayhi) * 100);
 					
 				// output fancy graph
-				log(createGraph(lasttrade, distancefromlow, daylow, dayhi, buyTolerance, sellTolerance),asset);
+				log(createGraph(lasttrade, distancefromlow, daylow, dayhi, buyTolerance, sellTolerance),pair);
 			
 				// get ticker info
 				kraken.api('Spread', {"pair":pair}, function(error, data) {
@@ -124,7 +124,7 @@ kraken.api('Balance', null, function(error, data) {
 						}
 
 						var velocity = parseFloat(((spreaddata[2]-spreaddata[0])/spreaddata[0])*100).toFixed(2);
-						log(direction + " " + velocity + "%", asset);
+						log(direction + " " + velocity + "%", pair);
 						
 						var buyPrice = lasttrade * (1-priceMod);
 						var buyVolume = (currencyBalance / buyPrice) * caution;
@@ -162,8 +162,8 @@ function buy(buyVolume, buyPrice, timer, stopLossPrice, profitPrice) {
 			
 			}
 			else if (data) {
-				log("[TRADE] " + data["result"]["descr"]["order"], asset);
-				log("[TRADE] " + data["result"]["descr"]["close"], asset);
+				log("[TRADE] " + data["result"]["descr"]["order"], pair);
+				log("[TRADE] " + data["result"]["descr"]["close"], pair);
 			}
 		});
 	}
