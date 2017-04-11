@@ -1,4 +1,4 @@
-// get settings from external file
+// get settings 
 var settings = require("./settings.js");
 var krakenkey = settings.krakenkey;
 var krakenpasscode = settings.krakenpasscode;
@@ -26,9 +26,12 @@ if (process.argv.length < 4) {
 	currency=[process.argv[3]];
 }
 
+// logging
+var log = require("./log.js");
+var createGraph = require("./createGraph.js");
+
 // add currency to make the trade pair
 var pair = asset+currency;
-
 
 // first get our balance			
 kraken.api('Balance', null, function(error, data) {
@@ -164,29 +167,4 @@ function buy(buyVolume, buyPrice, timer, stopLossPrice, profitPrice) {
 	}
 }
 
-// simple log helper function
-function log(string) {
-	var d = new Date();
-	var datestring = ("0" + d.getDate()).slice(-2) + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + d.getFullYear() + " " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
-	console.log(datestring + (asset!=null?" "+asset+currency:null) + " " + string);
-}
 
-// fancy graph to quickly see how asset is trading [bbb--*----ss]
-function createGraph(lasttrade, distancefromlow, low, hi, buyTolerance, sellTolerance) {
-	var width = 10;
-	var move = Math.round(((hi-low)/hi)*100);
-	var result = parseFloat(lasttrade).toFixed(5) + " | " + parseFloat(low).toFixed(5) + " [";
-	for (i=0;i<=width;i++) {
-		if ((i / width) * 100 >= distancefromlow && (i / width) * 100 < distancefromlow + (100 / width))
-			result = result + "*";
-		else if ((i / width) * 100 < buyTolerance)
-			result = result + "b";
-		else if ((i / width) * 100 > 100 - sellTolerance)
-			result = result + "s";
-		else
-			result = result + "-";
-	}
-
-	result = result + "] " + parseFloat(hi).toFixed(5) + " (" + distancefromlow + "%/"+move+"%)";
-	return result;
-}
