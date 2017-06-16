@@ -11,6 +11,10 @@ var minTrade = settings.minTrade;
 var minTradeAmount = settings.minTradeAmount;
 var timer = settings.timer;
 
+var fixedTradeEur = 5;
+var fixedTradeBtc = 0.001;
+var fixedTradeEth = 0.025;
+
 // set up kraken api
 var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(krakenkey,krakenpasscode);
@@ -129,12 +133,17 @@ kraken.api('Balance', null, function(error, data) {
 						var buyPrice = lasttrade * (1-priceMod);
 						var buyVolume = (currencyBalance / buyPrice) * caution;
 
+						// some fixed trade amounts
+						if (currency == "ZEUR" || currency == "EUR") buyVolume = fixedTradeEur / buyPrice;
+						else if (currency == "XXBT" || currency == "XBT") buyVolume = fixedTradeBtc / buyPrice;
+						else if (currency == "XETH" || currency == "ETH") buyVolume = fixedTradeEth / buyPrice;
+
 						// determine to buy/sell
-						if (move < moveLimit) { } // only trade sufficient move
-						else if (currency == "ZEUR" && (buyVolume * buyPrice < 1)) { } // dont trade too low 
-						else if (currency == "XXBT" && (buyVolume * buyPrice < 0.001)) { } // dont trade too low
-						else if (currency == "XETH" && (buyVolume * buyPrice < 0.025)) { } // dont trade too low
-						else if (distancefromlow <= buyTolerance) buy(buyVolume, buyPrice, timer, 1, move*.75);
+						if (move < moveLimit) { } // only trade sufficient moving assets
+						else if ((currency == "ZEUR" || currency == "EUR") && (buyVolume * buyPrice < fixedTradeEur)) { } // dont trade too low 
+						else if ((currency == "XXBT" || currency == "XBT") && (buyVolume * buyPrice < fixedTradeBtc)) { } // dont trade too low
+						else if ((currency == "XETH" || currency == "ETH") && (buyVolume * buyPrice < fixedTradeEth)) { } // dont trade too low
+						else if (distancefromlow <= buyTolerance) buy(pair, buyVolume, buyPrice, timer, move*.75);
 
 					}
 				});
@@ -143,8 +152,8 @@ kraken.api('Balance', null, function(error, data) {
 	}
 });
 
-// buy for a given price with built in timer with stop loss and profit close order
-function buy(buyVolume, buyPrice, timer, stopLossPrice, profitPrice) {
+// buy for a given price with built in timer with profit close order
+function buy(pair, buyVolume, buyPrice, timer, profitPrice) {
 	
 	if (buyVolume>=minTrade && (buyVolume * buyPrice) >= minTradeAmount) {
 
