@@ -11,7 +11,7 @@ var minTrade = settings.minTrade;
 var minTradeAmount = settings.minTradeAmount;
 var timer = settings.timer;
 
-var fixedTradeEur = 5;
+var fixedTradeEur = 10;
 var fixedTradeBtc = 0.001;
 var fixedTradeEth = 0.025;
 
