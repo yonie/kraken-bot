@@ -6,7 +6,7 @@
   "license": "GPL-3.0",
   "files": ["server.js", "settings.js.example","assetpairs.js","balance.js","orders.js","trades.js"],
   "dependencies": {
-    "kraken-api": ">=0.1.7"
+    "kraken-api": "latest"
   },
   "engines": {
     "node": ">=0.10"
