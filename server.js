@@ -73,67 +73,7 @@ kraken.api('Balance', null, function(error, data) {
 	
 					} else {
 
-						/*
-						var bidsarray = data["result"][pair];
-						var arraysize = bidsarray.length;
-						var resolution = Math.floor(arraysize/3);
-						var spreaddata = [];
-						var lowest;
-						var highest;
-						var average;
-						var direction;
-		
-						// iterate the array of spread data and get some meaningful averages
-						for (var m=0;m<Math.floor(arraysize/resolution);m++) {
-
-							for (var n=0;n<resolution;n++) {
-
-								var counter = parseFloat(n)+(resolution*parseFloat(m));
-
-								if (n==0) {
-									lowest = bidsarray[counter][1];
-									highest = bidsarray[counter][1];
-								}
-
-								if (bidsarray[counter][1]<lowest) lowest = bidsarray[counter][1];
-								if (bidsarray[counter][1]>highest) highest = bidsarray[counter][1];
-						
-								average = (parseFloat(lowest) + parseFloat(highest)) / 2;
-							}
-							
-							// add the average to the array
-							spreaddata.push(average);
-						}
-
-						// scenario: falling
-						if (spreaddata[2] < spreaddata[1] && spreaddata[1] < spreaddata[0]) {
-							direction = "falling";
-						}
-						// scenario: rising
-						else if (spreaddata[2] > spreaddata[1] && spreaddata[1] > spreaddata[0]) {
-							direction = "rising";
-						}
-						// scenario: peak
-						else if (spreaddata[2] < spreaddata[1] && spreaddata[1] > spreaddata[0]) {
-							direction = "peak";
-						}
-						// scenario: dip
-						else if (spreaddata[2] > spreaddata[1] && spreaddata[1] < spreaddata[0]) {
-							direction = "dip";
-						}
-						// scenario: flat
-						else if (spreaddata[2] == spreaddata[1] && spreaddata[1] == spreaddata[0]) {
-							direction = "flat";
-						}
-						// scenario: Other
-						else {
-							direction = "other";
-						}
-
-						var velocity = parseFloat(((spreaddata[2]-spreaddata[0])/spreaddata[0])*100).toFixed(2);
-						log(direction + " " + velocity + "%", pair);
-						*/
-						
+					
 						var buyPrice = lasttrade * (1-priceMod);
 						var buyVolume;
 
@@ -224,4 +164,65 @@ function buy(pair, buyVolume, buyPrice, timer) {
 	}
 }
 
+function direction() {
+	/*
+	var bidsarray = data["result"][pair];
+	var arraysize = bidsarray.length;
+	var resolution = Math.floor(arraysize/3);
+	var spreaddata = [];
+	var lowest;
+	var highest;
+	var average;
+	var direction;
 
+	// iterate the array of spread data and get some meaningful averages
+	for (var m=0;m<Math.floor(arraysize/resolution);m++) {
+
+	for (var n=0;n<resolution;n++) {
+
+	var counter = parseFloat(n)+(resolution*parseFloat(m));
+
+	if (n==0) {
+	lowest = bidsarray[counter][1];
+	highest = bidsarray[counter][1];
+	}
+
+	if (bidsarray[counter][1]<lowest) lowest = bidsarray[counter][1];
+	if (bidsarray[counter][1]>highest) highest = bidsarray[counter][1];
+
+	average = (parseFloat(lowest) + parseFloat(highest)) / 2;
+	}
+
+	// add the average to the array
+	spreaddata.push(average);
+	}
+
+	// scenario: falling
+	if (spreaddata[2] < spreaddata[1] && spreaddata[1] < spreaddata[0]) {
+	direction = "falling";
+	}
+	// scenario: rising
+	else if (spreaddata[2] > spreaddata[1] && spreaddata[1] > spreaddata[0]) {
+	direction = "rising";
+	}
+	// scenario: peak
+	else if (spreaddata[2] < spreaddata[1] && spreaddata[1] > spreaddata[0]) {
+	direction = "peak";
+	}
+	// scenario: dip
+	else if (spreaddata[2] > spreaddata[1] && spreaddata[1] < spreaddata[0]) {
+	direction = "dip";
+	}
+	// scenario: flat
+	else if (spreaddata[2] == spreaddata[1] && spreaddata[1] == spreaddata[0]) {
+	direction = "flat";
+	}
+	// scenario: Other
+	else {
+	direction = "other";
+	}
+
+	var velocity = parseFloat(((spreaddata[2]-spreaddata[0])/spreaddata[0])*100).toFixed(2);
+	log(direction + " " + velocity + "%", pair);
+	*/
+}
