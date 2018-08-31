@@ -19,8 +19,8 @@ kraken.api('TradesHistory', null, function(error, tradesHistoryData) {
 		logString += tradesHistoryData.result.trades[trade].type + " ";
 		logString += tradesHistoryData.result.trades[trade].ordertype + " ";
 		logString += parseFloat(tradesHistoryData.result.trades[trade].vol).toFixed(5) + " @ ";
-		logString += tradesHistoryData.result.trades[trade].price + " = ";
-		logString += tradesHistoryData.result.trades[trade].cost + " ";
+		logString += parseFloat(tradesHistoryData.result.trades[trade].price).toFixed(5) + " = ";
+		logString += parseFloat(tradesHistoryData.result.trades[trade].cost).toFixed(5) + " ";
 		console.log(logString);
 	}
 });
