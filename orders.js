@@ -16,7 +16,7 @@ kraken.api('OpenOrders', null, function(error, data) {
 	else {
 		// get current time to see which orders are too old
 		currentTime = Math.floor(new Date()/1000);
-		log("Current open orders: " + Object.keys(data.result.open).length);
+		log("Current open orders: " + Object.keys(data.result.open).length + ", max age: " + maxAgeSeconds / 60 / 60 +"h");
 
 		var numOrders = 0;
 
@@ -26,7 +26,6 @@ kraken.api('OpenOrders', null, function(error, data) {
 			numOrders++;
 				
 			log("order: " + data.result.open[order].descr.order);
-			if (data.result.open[order].descr.close != null) log("order: " + data.result.open[order].descr.close);
 
 			// get the order open time 
 			orderTime = data.result.open[order].opentm;
