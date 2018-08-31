@@ -4,8 +4,8 @@ var krakenkey = settings.krakenkey;
 var krakenpasscode = settings.krakenpasscode;
 var buyTolerance = settings.buyTolerance;
 var sellTolerance = settings.sellTolerance;
-var moveLimit = settings.moveLimit;
-var caution = settings.caution;
+var buyMoveLimit = settings.buyMoveLimit;
+var sellMoveLimit = settings.sellMoveLimit;
 var priceMod = settings.priceMod;
 var minTrade = settings.minTrade;
 var minTradeAmount = settings.minTradeAmount;
@@ -13,7 +13,7 @@ var timer = settings.timer;
 
 var fixedTradeEur = 10;
 var fixedTradeBtc = 0.003;
-var fixedTradeEth = 0.025;
+var fixedTradeEth = 0.05;
 
 // set up kraken api
 var KrakenClient = require('kraken-api');
@@ -73,37 +73,33 @@ kraken.api('Balance', null, function(error, data) {
 	
 					} else {
 
-					
-						var buyPrice = lasttrade * (1-priceMod);
-						var buyVolume;
-
-						// some fixed trade amounts
-						if (currency == "ZEUR" || currency == "EUR") buyVolume = fixedTradeEur / buyPrice;
-						else if (currency == "XXBT" || currency == "XBT") buyVolume = fixedTradeBtc / buyPrice;
-						else if (currency == "XETH" || currency == "ETH") buyVolume = fixedTradeEth / buyPrice;
-						// else buyVolume = (currencyBalance / buyPrice) * caution;
-
-						// quick hack: clean up volume to deal with new trade restrictions
-						if (pair=="XZECZEUR") buyPrice = buyPrice.toFixed(2);
-						else if (pair=="BCHEUR") buyPrice = buyPrice.toFixed(1);
-						else if (pair=="DASHEUR") buyPrice = buyPrice.toFixed(2);
-						else if (pair=="XETCZEUR") buyPrice = buyPrice.toFixed(3);
-						else if (pair=="XETHZEUR") buyPrice = buyPrice.toFixed(2);
-						else if (pair=="XLTCZEUR") buyPrice = buyPrice.toFixed(2);
-						else if (pair=="XREPZEUR") buyPrice = buyPrice.toFixed(3);
-						else if (pair=="XXBTZEUR") buyPrice = buyPrice.toFixed(1);
-						else if (pair=="XXMRZEUR") buyPrice = buyPrice.toFixed(2);
-						else if (pair=="XXRPZEUR") buyPrice = buyPrice.toFixed(5);
-
 						// determine to buy/sell
-						if (move < moveLimit) { } // only trade sufficient moving assets
-						else if (distancefromlow <= buyTolerance) {
+						if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
+						
+							var price = lasttrade * (1-priceMod);
+							var volume;
+
+							// some fixed trade amounts
+							if (currency == "ZEUR" || currency == "EUR") volume = fixedTradeEur / price;
+							else if (currency == "XXBT" || currency == "XBT") volume = fixedTradeBtc / price;
+							else if (currency == "XETH" || currency == "ETH") volume = fixedTradeEth / price;
+
+							// quick hack
+							price = cleanupPrice(pair,price);
 
 							// buy stuff
-							if (takeprofit=="takeprofit") 
-								buyTakeProfit(pair, buyVolume, buyPrice, timer, move*0.75);
-							else
-								buy(pair, buyVolume, buyPrice, timer);
+							buy(pair, volume, price, timer);
+						}
+						else if (move >= sellMoveLimit && distancefromhi <= sellTolerance) {
+
+							var price = lasttrade * (1-priceMod);
+							var volume = assetBalance / 10;
+
+							// quick hack
+							price = cleanupPrice(pair,price);
+					
+							// sell stuff (with a stop loss)
+							sell(pair, volume, price, timer);
 						}
 					}
 				});
@@ -113,45 +109,19 @@ kraken.api('Balance', null, function(error, data) {
 });
 
 // buy for a given price with built in timer with profit close order
-function buyTakeProfit(pair, buyVolume, buyPrice, timer, profitPrice) {
+function buy(pair, volume, price, timer) {
+
+	if (volume>=minTrade && (volume * price) >= minTradeAmount) {
 	
-	if (buyVolume>=minTrade && (buyVolume * buyPrice) >= minTradeAmount) {
+		log("volume to buy = "+ volume);
+		log("price to pay = "+ price);
 
 		return kraken.api('AddOrder', {
 			"pair" : pair, 
 			"type" : "buy", 
 			"ordertype" :  "limit", 
-			"volume" : buyVolume, 
-			"price" : buyPrice, 
-			"expiretm" : "+"+timer, 
-			"close[ordertype]": "take-profit",
-			"close[price]" : "#"+profitPrice+"%"
-		}, function(error, data) { 
-			if (error) {
-				log(error);
-			}
-			else if (data) {
-				log("[TRADE] " + data["result"]["descr"]["order"], pair);
-				log("[TRADE] " + data["result"]["descr"]["close"], pair);
-			}
-		});
-	}
-}
-
-// buy for a given price with built in timer with profit close order
-function buy(pair, buyVolume, buyPrice, timer) {
-
-	if (buyVolume>=minTrade && (buyVolume * buyPrice) >= minTradeAmount) {
-	
-		log("volume to buy = "+ buyVolume);
-		log("price to pay = "+ buyPrice);
-
-		return kraken.api('AddOrder', {
-			"pair" : pair, 
-			"type" : "buy", 
-			"ordertype" :  "limit", 
-			"volume" : buyVolume, 
-			"price" : buyPrice, 
+			"volume" : volume, 
+			"price" : price, 
 			"expiretm" : "+"+timer, 
 		}, function(error, data) { 
 			if (error) {
@@ -163,6 +133,63 @@ function buy(pair, buyVolume, buyPrice, timer) {
 		});
 	}
 }
+
+// stop loss sell
+function sell(pair, volume, price, timer) {
+
+	if (volume>=minTrade && (volume * price) >= minTradeAmount) {
+	
+		log("volume to sell = "+ volume);
+		log("price to receive = "+ price);
+
+		return kraken.api('AddOrder', {
+			"pair" : pair, 
+			"type" : "sell", 
+			"ordertype" :  "stop-loss", 
+			"volume" : volume, 
+			"price" : price, 
+//			"expiretm" : "+"+timer, 
+		}, function(error, data) { 
+			if (error) {
+				log(error);
+			}
+			else if (data) {
+				log("[TRADE] " + data["result"]["descr"]["order"], pair);
+			}
+		});
+	}
+}
+
+function cleanupPrice(pair,price) {
+	// quick hack: clean up volume to deal with new trade restrictions
+	if (pair=="XZECZEUR") price = price.toFixed(2);
+	else if (pair=="BCHEUR") price = price.toFixed(1);
+	else if (pair=="DASHEUR") price = price.toFixed(2);
+	else if (pair=="XETCZEUR") price = price.toFixed(3);
+	else if (pair=="XETHZEUR") price = price.toFixed(2);
+	else if (pair=="XLTCZEUR") price = price.toFixed(2);
+	else if (pair=="XREPZEUR") price = price.toFixed(3);
+	else if (pair=="XXBTZEUR") price = price.toFixed(1);
+	else if (pair=="XXMRZEUR") price = price.toFixed(2);
+	else if (pair=="XXRPZEUR") price = price.toFixed(5);
+	else if (pair=="XZECXXBT") price = price.toFixed(5);
+	else if (pair=="EOSXBT") price = price.toFixed(7);
+	else if (pair=="BCHXBT") price = price.toFixed(5);
+	else if (pair=="XICNXXBT") price = price.toFixed(6);
+	else if (pair=="XXLMXXBT") price = price.toFixed(8);
+	else if (pair=="GNOXBT") price = price.toFixed(5);
+	else if (pair=="XETHXXBT") price = price.toFixed(5);
+	else if (pair=="DASHXBT") price = price.toFixed(5);
+	else if (pair=="XLTCXXBT") price = price.toFixed(6);
+	else if (pair=="XETCXXBT") price = price.toFixed(6);
+	else if (pair=="XXRPXXBT") price = price.toFixed(8);
+	else if (pair=="XREPXXBT") price = price.toFixed(6);
+	else if (pair=="XICNXETH") price = price.toFixed(6);
+	else if (pair=="XMLNXETH") price = price.toFixed(5);
+	else if (pair=="GNOETH") price = price.toFixed(4);
+	return price;
+}
+
 
 function direction() {
 	/*
