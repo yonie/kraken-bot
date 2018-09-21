@@ -20,6 +20,7 @@ var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(krakenkey,krakenpasscode);
 
 // get trade pair from CMDLINE
+// TODO: single pairs as cmdline
 if (process.argv.length < 4) {
 	console.log("No trade pair specified.");
 	console.log("Usage: " + process.argv[1] + " [tradeAsset] [tradeCurrency]");
@@ -47,6 +48,7 @@ kraken.api('Balance', null, function(error, data) {
 		var assetBalance = data.result[asset];
 
 		// get ticker info
+		// TODO: request multiple pairs
 		kraken.api('Ticker', {"pair": pair}, function(error, data) {
 	
 			if(error) {
@@ -92,13 +94,13 @@ kraken.api('Balance', null, function(error, data) {
 						}
 						else if (move >= sellMoveLimit && distancefromhi <= sellTolerance) {
 
-							var price = lasttrade * (1-priceMod);
+							var price = lasttrade * (1+priceMod);
 							var volume = assetBalance / 10;
 
 							// quick hack
 							price = cleanupPrice(pair,price);
 					
-							// sell stuff (with a stop loss)
+							// sell stuff
 							sell(pair, volume, price, timer);
 						}
 					}
@@ -134,7 +136,7 @@ function buy(pair, volume, price, timer) {
 	}
 }
 
-// stop loss sell
+// sell order with timed expiration
 function sell(pair, volume, price, timer) {
 
 	if (volume>=minTrade && (volume * price) >= minTradeAmount) {
@@ -145,10 +147,10 @@ function sell(pair, volume, price, timer) {
 		return kraken.api('AddOrder', {
 			"pair" : pair, 
 			"type" : "sell", 
-			"ordertype" :  "stop-loss", 
+			"ordertype" :  "limit", 
 			"volume" : volume, 
 			"price" : price, 
-//			"expiretm" : "+"+timer, 
+			"expiretm" : "+"+timer, 
 		}, function(error, data) { 
 			if (error) {
 				log(error);
