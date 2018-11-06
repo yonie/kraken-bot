@@ -7,11 +7,9 @@ var sellTolerance = settings.sellTolerance;
 var buyMoveLimit = settings.buyMoveLimit;
 var sellMoveLimit = settings.sellMoveLimit;
 var priceMod = settings.priceMod;
-var minTrade = settings.minTrade;
-var minTradeAmount = settings.minTradeAmount;
 var timer = settings.timer;
 
-var fixedTradeEur = 20;
+var fixedTradeEur = 10;
 var fixedTradeBtc = 0.003;
 var fixedTradeEth = 0.05;
 
@@ -20,7 +18,7 @@ var KrakenClient = require('kraken-api');
 var kraken = new KrakenClient(krakenkey,krakenpasscode);
 
 // get trade pair from CMDLINE
-if (process.argv.length < 4) {
+if (process.argv.length < 3) {
 	console.log("No trade pair specified.");
 	console.log("Usage: " + process.argv[1] + " [tradePair] [[tradePair2] [tradePair3] ..]");
 	console.log("Example: to trade Litecoin for Euro, execute " + process.argv[1] + " XLTCZEUR");
@@ -45,7 +43,7 @@ for (var i=0, len=pairs.length; i<len; i++) {
 
 // get ticker info for all pairs
 kraken.api('Ticker', {"pair": pairsExploded}, function(error, tickerdata) {
-
+				
 	if (error) {log(error); }
 	else {
 
@@ -67,17 +65,15 @@ kraken.api('Ticker', {"pair": pairsExploded}, function(error, tickerdata) {
 			// output fancy graph
 			log(createGraph(lasttrade, distancefromlow, daylow, dayhi, buyTolerance, sellTolerance),pair);
 
+			var random = 1 + (Math.random() * .25);
+			priceMod = priceMod * random;
+
 			// determine to buy/sell
 			if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
-			
-				var price = lasttrade * (1-priceMod);
-				var volume;
 
-				// some fixed trade amounts for certain currencies
-				var currency = pair.substr(pair.length-3)
-				if (currency == "EUR") volume = fixedTradeEur / price;
-				else if (currency == "XBT") volume = fixedTradeBtc / price;
-				else if (currency == "ETH") volume = fixedTradeEth / price;
+
+				var price = lasttrade * (1-priceMod);
+				var volume = calculatevolume(pair,price)
 
 				// quick hack
 				price = cleanupPrice(pair,price);
@@ -88,24 +84,43 @@ kraken.api('Ticker', {"pair": pairsExploded}, function(error, tickerdata) {
 			else if (move >= sellMoveLimit && distancefromhi <= sellTolerance) {
 
 				var price = lasttrade * (1+priceMod);
-				var volume = assetBalance / 10;
+				var volume = calculatevolume(pair,price)
 
-				// quick hack
-				price = cleanupPrice(pair,price);
+				kraken.api('Balance', null, function(error, balancedata) {
 
-				// sell stuff
-				sell(pair, volume, price, timer);
+					if (error) {log(error,pair); }
+					else {
+						// ugly hack to find the asset balance from the balance data
+						assetbalance = Math.max(balancedata.result[pair.substr(0,4)], balancedata.result[pair.substr(0,3)])
+
+						if (assetbalance < volume) return
+
+						// quick hack
+						price = cleanupPrice(pair,price);
+
+						// sell stuff
+//						sell(pair, volume, price, timer);
+					}
+				})
 			}
 		})
 	}
 })
 
+// simple helper to calc volume for pair + price
+function calculatevolume(pair,price) {
+	// some fixed trade amounts for certain currencies
+	var currency = pair.substr(pair.length-3)
+	if (currency == "EUR") return (fixedTradeEur / price);
+	else if (currency == "XBT") return (fixedTradeBtc / price);
+	else if (currency == "ETH") return (fixedTradeEth / price);
+}
 
 
 // buy for a given price with built in timer with profit close order
 function buy(pair, volume, price, timer) {
 
-	if (volume>=minTrade && (volume * price) >= minTradeAmount) {
+	if (volume * price > 0) {
 	
 		log("volume to buy = "+ volume,pair);
 		log("price to pay = "+ price,pair);
@@ -129,7 +144,7 @@ function buy(pair, volume, price, timer) {
 // sell order with timed expiration
 function sell(pair, volume, price, timer) {
 
-	if (volume>=minTrade && (volume * price) >= minTradeAmount) {
+	if (volume * price > 0) {
 	
 		log("volume to sell = "+ volume,pair);
 		log("price to receive = "+ price,pair);
@@ -150,10 +165,11 @@ function sell(pair, volume, price, timer) {
 	}
 }
 
+// quick hack: clean up volume to deal with new trade restrictions
 function cleanupPrice(pair,price) {
-	// quick hack: clean up volume to deal with new trade restrictions
 	if (pair=="XZECZEUR") price = price.toFixed(2);
 	else if (pair=="BCHEUR") price = price.toFixed(1);
+	else if (pair=="QTUMEUR") price = price.toFixed(5);
 	else if (pair=="DASHEUR") price = price.toFixed(2);
 	else if (pair=="XETCZEUR") price = price.toFixed(3);
 	else if (pair=="XETHZEUR") price = price.toFixed(2);
@@ -167,6 +183,8 @@ function cleanupPrice(pair,price) {
 	else if (pair=="EOSXBT") price = price.toFixed(7);
 	else if (pair=="BCHXBT") price = price.toFixed(5);
 	else if (pair=="XICNXXBT") price = price.toFixed(6);
+	else if (pair=="GNOEUR") price = price.toFixed(2);
+	else if (pair=="EOSEUR") price = price.toFixed(4);
 	else if (pair=="XXLMXXBT") price = price.toFixed(8);
 	else if (pair=="GNOXBT") price = price.toFixed(5);
 	else if (pair=="XETHXXBT") price = price.toFixed(5);
