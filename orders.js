@@ -24,14 +24,16 @@ kraken.api('OpenOrders', null, function(error, data) {
 		for (var order in data.result.open) {
 
 			numOrders++;
-				
-			log("order: " + data.result.open[order].descr.order);
+	
+			log("order: " + data.result.open[order].descr.order + " for " + (data.result.open[order].vol * data.result.open[order].descr.price).toFixed(2));
 
 			// get the order open time 
 			orderTime = data.result.open[order].opentm;
 			orderType = data.result.open[order].descr.type;
+			orderType2 = data.result.open[order].descr.ordertype;
+
 			// cancel order if it is too old
-			if (orderTime + maxAgeSeconds < currentTime) {
+			if (orderType2 != "stop-loss" && orderTime + maxAgeSeconds < currentTime) {
 				log("Cancelling order #" + numOrders + " " + order + "...");
 				kraken.api('CancelOrder', { "txid" : order }, function (error, data) { 
 					if (error) log(error);
