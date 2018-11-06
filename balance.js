@@ -15,7 +15,7 @@ kraken.api('TradeBalance', {"asset":"ZEUR"}, function(error, tradeBalanceData) {
 		if (!error) {
 			// get ticker info to determine total value
 //			kraken.api('Ticker', {"pair":"BCHEUR,DASHEUR,EOSEUR,GNOEUR,XETCZEUR,XETHZEUR,XLTCZEUR,XREPZEUR,XXBTZEUR,XXLMZEUR,XXMRZEUR,XXRPZEUR,XZECZEUR"}, function(error,tickerData) {
-			kraken.api('Ticker', {"pair":"BCHEUR,DASHEUR,XETCZEUR,XETHZEUR,XLTCZEUR,XREPZEUR,XXBTZEUR,XXMRZEUR,XXRPZEUR,XZECZEUR,EOSEUR,GNOEUR"}, function(error,tickerData) {
+			kraken.api('Ticker', {"pair":"BCHEUR,DASHEUR,XETCZEUR,XETHZEUR,XLTCZEUR,XREPZEUR,XXBTZEUR,XXMRZEUR,XXRPZEUR,XZECZEUR,EOSEUR,GNOEUR,ADAEUR,QTUMEUR,XXLMZEUR"}, function(error,tickerData) {
 				if (error) console.log(error);
 				else for (var asset in balanceData.result) {
 					if (balanceData.result[asset] && balanceData.result[asset]>=0.00001) {
