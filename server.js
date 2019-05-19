@@ -106,6 +106,11 @@ setInterval( function () {
 				var dayhi = tickerdata.result[pair].h[1];
 				var weighedaverage = tickerdata.result[pair].p[1];
 				
+				if (wallet[asset]) {
+					wallet[asset]['price'] = lasttrade
+					if (wallet[asset]['amount']) wallet[asset]['value'] = wallet[asset]['amount'] * wallet[asset]['price']
+				}
+
 				// do some basic intepretation of the data
 				var distancefromlow = Math.round((lasttrade - daylow) / (dayhi - daylow) * 100);
 				var distancefromhi = Math.round((dayhi - lasttrade) / (dayhi - daylow) * 100);
