@@ -67,17 +67,55 @@ server.on('request', (request, response) => {
 		if (balance) response.write("<h2>latest balance: "+balance+"</h2>")
 		response.write("<a href=\"/wallet\">wallet</a><br/>")
 		response.write("<a href=\"/trades\">trades</a><br/>")
-		response.write("<a href=\"/orders\">orders</a><br/>")
+		response.write("<a href=\"/orders\">orders ("+orders.length+")</a><br/>")
 		response.write("<a href=\"/ticker\">ticker</a><br/>")
+		if (trades.length>10) {
+			response.write("<p>latest trades:</p>")
+			response.write("<ul>")
+			for (i=0;i<10;i++) {
+				response.write("<li>")
+				response.write("" + new Date(trades[i]['time']*1000).toLocaleString())
+				response.write(" ")
+				response.write(trades[i]['type'])
+				response.write(" ")
+				response.write(trades[i]['vol'])
+				response.write(" ")
+				response.write(trades[i]['pair'])
+				response.write(" @ ")
+				response.write(trades[i]['price'])
+				response.write(" = ")
+				response.write(trades[i]['cost'])
+				response.write("</li>")
+			}
+			response.write("</ul>")
+		} 
 		response.write("</body></html>")
 	}
 	response.end()
 });
 
-pairsExploded = "XETHZEUR,DASHEUR,XLTCZEUR,XXMRZEUR,XZECZEUR,XREPZEUR,XETCZEUR,XXLMZEUR,XXRPZEUR,EOSEUR,GNOEUR,ADAEUR,QTUMEUR,XTZEUR"
-pairs = pairsExploded.split(",")
+var pairs = []
+var pairsExploded
 
-console.log("trading on pairs:",pairsExploded)
+// determine pairs
+kraken.api('AssetPairs', null, function(error, pairdata) {
+
+	if (error) console.log(error)
+	else {
+		// push all pairs into an array
+		for (assetpair in pairdata['result']) pairs.push(assetpair)
+
+		// filter out what we want
+		pairs = pairs.filter(function(pair){return pair.endsWith("EUR")})
+
+		// get the exploded variant 
+		pairsExploded = pairs.join()
+
+		console.log("trading on pairs:",pairsExploded)
+	}
+
+})
+
 
 var ticker = []
 
@@ -107,7 +145,7 @@ setInterval( function () {
 				var weighedaverage = tickerdata.result[pair].p[1];
 				
 				if (wallet[asset]) {
-					wallet[asset]['price'] = lasttrade
+					wallet[asset]['price'] = parseFloat(lasttrade)
 					if (wallet[asset]['amount']) wallet[asset]['value'] = wallet[asset]['amount'] * wallet[asset]['price']
 				}
 
@@ -121,12 +159,12 @@ setInterval( function () {
 
 				// invoke some randomness in the prices
 				var random = 1 + (Math.random() * .1);
-				priceMod = priceMod * random;
+				var modifier = priceMod * random;
 
 				// determine to buy/sell
 				if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
 
-					var price = lasttrade * (1-priceMod);
+					var price = lasttrade * (1-modifier);
 					var volume = calculatevolume(pair,price)
 
 					// quick hack
@@ -141,7 +179,7 @@ setInterval( function () {
 
 					// TODO: check open orders to see if a trade is even possible
 
-					var price = lasttrade * (1+priceMod);
+					var price = lasttrade * (1+modifier);
 
 					// quick hack
 					price = cleanupPrice(pair,price);
@@ -157,7 +195,7 @@ setInterval( function () {
 			})
 		}
 	})
-}, 1000*10)
+}, 1000*11)
 
 var orders = []
 
@@ -190,7 +228,7 @@ setInterval(function() {
 				orderType2 = data.result.open[order].descr.ordertype;
 
 				// cancel order if it is too old
-				if (orderType2 != "stop-loss" && orderTime + maxAgeSeconds < currentTime) {
+				if (orderTime + maxAgeSeconds < currentTime) {
 					log("Cancelling order #" + numOrders + " " + order + "...");
 					kraken.api('CancelOrder', { "txid" : order }, function (error, data) { 
 						if (error){}//error) log(error);
@@ -200,35 +238,22 @@ setInterval(function() {
 			}
 		}	
 	});
-},1000*90)
+},1000*87)
 
 var trades = []
 
 // get trade history info
 setInterval(function() {
 	kraken.api('TradesHistory', null, function(error, tradesHistoryData) {
-		trades = []
 		if (error) console.log(error)
-		else for (var trade in tradesHistoryData.result.trades) {
-			
-			trades.push(tradesHistoryData.result.trades[trade])
-
-			var logString = "";
-			var d = new Date(tradesHistoryData.result.trades[trade].time * 1000);
-
-			var datestring = ("0" + d.getDate()).slice(-2) + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + d.getFullYear() + " " + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
-
-			logString += datestring + " ";
-			logString += tradesHistoryData.result.trades[trade].pair + " "; 
-			logString += tradesHistoryData.result.trades[trade].type + " ";
-			logString += tradesHistoryData.result.trades[trade].ordertype + " ";
-			logString += parseFloat(tradesHistoryData.result.trades[trade].vol).toFixed(5) + " @ ";
-			logString += parseFloat(tradesHistoryData.result.trades[trade].price).toFixed(5) + " = ";
-			logString += parseFloat(tradesHistoryData.result.trades[trade].cost).toFixed(5) + " ";
-	//		console.log(logString);
+		else {
+			trades = []
+			for (var trade in tradesHistoryData.result.trades) 
+				trades.push(tradesHistoryData.result.trades[trade])
+			log("Updated trades history.")
 		}
 	});
-},1000*60)
+},1000*57)
 
 var wallet = {}
 
@@ -271,7 +296,7 @@ setInterval(function() {
 			});	
 		}
 	});
-},1000*30)
+},1000*29)
 
 
 // simple helper to calc volume for pair + price
