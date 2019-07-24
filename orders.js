@@ -25,8 +25,6 @@ kraken.api('OpenOrders', null, function(error, data) {
 
 			numOrders++;
 	
-			log("order: " + data.result.open[order].descr.order + " for " + (data.result.open[order].vol * data.result.open[order].descr.price).toFixed(2));
-
 			// get the order open time 
 			orderTime = data.result.open[order].opentm;
 			orderType = data.result.open[order].descr.type;
