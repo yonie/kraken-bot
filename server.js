@@ -17,6 +17,8 @@ var sellMoveLimit = settings.sellMoveLimit;
 var priceMod = settings.priceMod;
 var timer = settings.timer;
 
+const numHistory = 45
+
 var maxAgeSeconds = settings.maxAgeSeconds;
 
 var fixedTradeEur = 15;
@@ -69,10 +71,10 @@ server.on('request', (request, response) => {
 		response.write("<a href=\"/trades\">trades</a><br/>")
 		response.write("<a href=\"/orders\">orders ("+orders.length+")</a><br/>")
 		response.write("<a href=\"/ticker\">ticker</a><br/>")
-		if (trades.length>10) {
+		if (trades && trades.length>numHistory) {
 			response.write("<p>latest trades:</p>")
 			response.write("<ul>")
-			for (i=0;i<10;i++) {
+			for (i=0;i<numHistory;i++) {
 				response.write("<li>")
 				response.write("" + new Date(trades[i]['time']*1000).toLocaleString())
 				response.write(" ")
