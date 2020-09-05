@@ -181,21 +181,23 @@ setInterval(function () {
 				// determine to buy/sell
 				if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
 
-					var price = lasttrade * (1 - modifier);
+					var price = lasttrade * (1 - modifier)
 					var volume = calculatevolume(pair, price)
 
-					// quick hack
-					price = cleanupPrice(pair, price);
+					// quick hack to ensure proper input for API
+					price = cleanupPrice(pair, price)
 
 					// TODO: check open orders to see if a trade is possible
 
-					// TODO: make sure we don't buy stuff below minimum trade volume
+					// make sure we don't buy stuff below minimum trade volume
+					if (tradevolume < 10000) return
 
 					// if we have too much of one asset, don't buy more
 					if (wallet[asset] && balance && wallet[asset]['amount'] * wallet[asset]['value'] > 0.1 * balance) return
 
 					// buy stuff
-					buy(pair, volume, price, timer);
+					buy(pair, volume, price, timer)
+
 				} else if (move >= sellMoveLimit && distancefromhi <= sellTolerance) {
 
 					// TODO: check open orders to see if a trade is even possible
@@ -298,35 +300,19 @@ setInterval(function () {
 
 				if (error) {
 					log("Error getting balance: " + error)
-				} //error) console.log(error);
+				} 
 				else {
-					// get ticker info to determine total value
-					kraken.api('Ticker', {
-						"pair": pairsExploded
-					}, function (error, tickerData) {
+					if (!wallet) wallet = {}
+					for (var asset in balanceData.result) {
+						var amount = parseFloat(balanceData.result[asset])
+						if (amount==0) return
 
-						if (error) {
-							log("Error getting ticker: " + error)
-						} else {
-							wallet = {}
-							for (var asset in balanceData.result) {
-
-								wallet[asset] = {}
-								wallet[asset]['asset'] = asset
-								wallet[asset]['amount'] = parseFloat(balanceData.result[asset])
-								// TODO: special hack to give base currency also a value
-								if (asset == "ZEUR") wallet[asset]['value'] = parseFloat(balanceData.result[asset])
-
-								// TODO: initial price and value
-
-								if (balanceData.result[asset] && balanceData.result[asset] >= 0.00001) {
-									var logString = asset + ": " + parseFloat(balanceData.result[asset]).toFixed(5);
-									if (tickerData.result[asset + "ZEUR"]) logString = logString + " for " + tickerData.result[asset + "ZEUR"].c[0] + " = " + parseFloat(balanceData.result[asset] * tickerData.result[asset + "ZEUR"].c[0]).toFixed(2) + " ZEUR";
-									if (tickerData.result[asset + "EUR"]) logString = logString + " for " + tickerData.result[asset + "EUR"].c[0] + " = " + parseFloat(balanceData.result[asset] * tickerData.result[asset + "EUR"].c[0]).toFixed(2) + " EUR";
-								}
-							}
-						}
-					});
+						if (!wallet[asset]) wallet[asset] = {}
+						wallet[asset]['asset'] = asset
+						wallet[asset]['amount'] = amount
+						// TODO: special hack to give base currency balance also a value
+						if (asset == "ZEUR") wallet[asset]['value'] = amount
+					}
 				}
 			});
 		}
@@ -342,7 +328,6 @@ function calculatevolume(pair, price) {
 	else if (currency == "XBT") return (fixedTradeBtc / price);
 	else if (currency == "ETH") return (fixedTradeEth / price);
 }
-
 
 // buy for a given price with built in timer with profit close order
 function buy(pair, volume, price, timer) {
