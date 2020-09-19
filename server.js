@@ -123,7 +123,7 @@ var pairPrecision = []
 kraken.api('AssetPairs', null, function (error, pairdata) {
 
 	if (error) {
-		log(error)
+		log("Critical error fetching asset pairs: " + error)
 		process.exit(1)
 	}
 	else {
@@ -284,7 +284,7 @@ setInterval(function () {
 
 		orders = []
 
-		if (error) { log(error) } 
+		if (error) { log("Error fetching open orders: " + error) } 
 		else {
 			// get current time to see which orders are too old
 			currentTime = Math.floor(new Date() / 1000);
@@ -305,7 +305,7 @@ setInterval(function () {
 				orderType = data.result.open[order].descr.type;
 				orderType2 = data.result.open[order].descr.ordertype;
 
-				// cancel order if it is too old
+				// cancel our orders if one is too old
 				if (orderTime + maxAgeSeconds < currentTime && orderType2 == "limit") {
 					log("Cancelling order #" + numOrders + " " + order + "...");
 					kraken.api('CancelOrder', {
@@ -413,7 +413,7 @@ function buy(pair, volume, price, timer) {
 			"price": price,
 			"expiretm": "+" + timer,
 		}, function (error, buydata) {
-			if (error) { log(error) } else if (buydata) {
+			if (error) { log("Error adding buy order: " + error) } else if (buydata) {
 				log("[TRADE] " + buydata["result"]["descr"]["order"], pair);
 			}
 		});
@@ -436,7 +436,7 @@ function sell(pair, volume, price, timer) {
 			"price": price,
 			"expiretm": "+" + timer,
 		}, function (error, selldata) {
-			if (error) { log(error) } //error) log("Sell order failed: "+error,pair)
+			if (error) { log("Error adding sell order: " + error) } //error) log("Sell order failed: "+error,pair)
 			else if (selldata) {
 				log("[TRADE] " + selldata["result"]["descr"]["order"], pair);
 			}
