@@ -3,6 +3,12 @@ var log = require("./log.js");
 log("initializing..")
 
 var createGraph = require("./createGraph.js");
+var dns = require('dns'),
+	dnscache = require('dnscache')({
+		"enable" : true,
+		"ttl" : 1800,
+		"cachesize" : 1000
+	});
 
 // get settings 
 var settings = require("./settings.js");
@@ -14,6 +20,7 @@ var buyMoveLimit = settings.buyMoveLimit;
 var sellMoveLimit = settings.sellMoveLimit;
 var priceMod = settings.priceMod;
 var timer = settings.timer;
+var engineTick = settings.engineTick
 
 const numHistory = 45
 
@@ -22,6 +29,7 @@ var maxAgeSeconds = settings.maxAgeSeconds;
 var fixedTradeEur = 15;
 var fixedTradeBtc = 0.003;
 var fixedTradeEth = 0.15;
+const minvolume = 50000
 
 // set up kraken api
 var KrakenClient = require('kraken-api');
@@ -96,6 +104,11 @@ server.on('request', (request, response) => {
 			}
 			response.write("</ul>")
 		}
+		if (balanceHistory) {
+			for (var i in balanceHistory) {
+				response.write("<p>"+i+" "+balanceHistory[i]+"</p>")
+			}
+		}
 		response.write("</body></html>")
 	}
 	response.end()
@@ -104,23 +117,35 @@ server.on('request', (request, response) => {
 var pairs = []
 var pairsExploded
 
+var pairPrecision = []
+
 // determine pairs
 kraken.api('AssetPairs', null, function (error, pairdata) {
 
-	if (error) console.log(error)
+	if (error) {
+		log(error)
+		process.exit(1)
+	}
 	else {
+
 		// push all pairs into an array
-		for (assetpair in pairdata['result']) pairs.push(assetpair)
+		for (assetpair in pairdata['result']) {
+			pairs.push(assetpair)
+			pairPrecision[assetpair] = pairdata['result'][assetpair].pair_decimals
+		}
 
 		// filter out what we want
 		pairs = pairs.filter(function (pair) {
 			return pair.endsWith("EUR")
 		})
 
+		// call cleanup tosee if we have all the asset pairs
+		pairs.forEach(function(pair) { cleanupPrice(pair, 1) })
+
 		// get the exploded variant 
 		pairsExploded = pairs.join()
 
-		console.log("trading on pairs:", pairsExploded)
+		log("trading on pairs:" + pairsExploded)
 	}
 
 })
@@ -138,7 +163,6 @@ setInterval(function () {
 
 		if (error) {
 			log("Error updating ticker: " + error)
-			//console.log(error)
 		} else {
 		
 			ticker = []
@@ -151,12 +175,12 @@ setInterval(function () {
 				if (pair.indexOf("XTZEUR") > -1) asset = "XTZ"
 
 				// for each pair see if we need to trade
-				var lasttrade = tickerdata.result[pair].c[0];
-				//var bid = tickerdata.result[pair].b[0]; //todo
-				var daylow = tickerdata.result[pair].l[1];
+				var lasttrade = tickerdata.result[pair].c[0]
+				//var bid = tickerdata.result[pair].b[0] //todo
+				var daylow = tickerdata.result[pair].l[1]
 				var tradevolume = parseInt(tickerdata.result[pair].v[1] * lasttrade)
-				var dayhi = tickerdata.result[pair].h[1];
-				var weighedaverage = tickerdata.result[pair].p[1];
+				var dayhi = tickerdata.result[pair].h[1]
+				var weighedaverage = tickerdata.result[pair].p[1]
 
 				// update wallet
 				if (wallet[asset]) {
@@ -178,27 +202,39 @@ setInterval(function () {
 				var random = 1 + (Math.random() * .1);
 				var modifier = priceMod * random;
 
+				// if we don't know our balance we should not trade
+				if (!balance) return
+
+				// TODO: before trading we should refresh the orders
+
 				// determine to buy/sell
 				if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
+					
+					// make sure we don't buy stuff below minimum trade volume
+					if (tradevolume < minvolume) return
+
+					log("Found interesting pair to buy: " + pair + " " + distancefromlow + "% " + move + "% vol: " + tradevolume) 
 
 					var price = lasttrade * (1 - modifier)
-					var volume = calculatevolume(pair, price)
+					var volume = calculatevolume(pair, price).toFixed(8)
 
 					// quick hack to ensure proper input for API
 					price = cleanupPrice(pair, price)
 
-					// TODO: check open orders to see if a trade is possible
+					// TODO: don't buy if price is higher than market open
+					
+					// if we have too much of one asset (including orders!), don't buy more
+					if (sumOpenOrders(pair) > 0.05 * balance) return
 
-					// make sure we don't buy stuff below minimum trade volume
-					if (tradevolume < 10000) return
-
-					// if we have too much of one asset, don't buy more
-					if (wallet[asset] && balance && wallet[asset]['amount'] * wallet[asset]['value'] > 0.1 * balance) return
+					// if we see we already own the asset, also check that
+					if (wallet && wallet[asset] && balance && (wallet[asset]['amount'] * wallet[asset]['value']) + sumOpenOrders(pair) > 0.05 * balance) return
 
 					// buy stuff
 					buy(pair, volume, price, timer)
 
-				} else if (move >= sellMoveLimit && distancefromhi <= sellTolerance) {
+				} else if (wallet && wallet[asset] && wallet[asset]['amount'] > 0 && ((move >= sellMoveLimit && distancefromhi <= sellTolerance) || tradevolume < minvolume * 0.5)) {
+
+					log("Found interesting pair to sell: " + pair + " " + distancefromlow + "% move: " + move + "% vol: " + tradevolume)
 
 					// TODO: check open orders to see if a trade is even possible
 
@@ -207,7 +243,7 @@ setInterval(function () {
 					// quick hack
 					price = cleanupPrice(pair, price);
 
-					var volume = calculatevolume(pair, price)
+					var volume = calculatevolume(pair, price).toFixed(8)
 
 					// if possible, check if we have enough to sell or break
 					if (wallet[asset] && wallet[asset]['amount'] < volume) return
@@ -218,7 +254,27 @@ setInterval(function () {
 			})
 		}
 	})
-}, 1000 * 11)
+}, 1000 * engineTick)
+
+// helper function to easily calculate the total amount of open order value for a given pair
+function sumOpenOrders(pair) {
+
+	var sum = 0
+
+	if (!pair) return
+	if (!orders) return
+
+	for (i in orders) {
+		if (orders[i].descr.pair == pair && orders[i].descr.type=="buy") {
+			sum = sum + (orders[i].descr.price*orders[i].vol)
+		}
+	}
+
+	if (sum > 0) log("Open orders for " + pair + ": " + sum)
+
+	return sum
+
+}
 
 var orders = []
 
@@ -228,11 +284,12 @@ setInterval(function () {
 
 		orders = []
 
-		if (error) {} //error) log(error);
+		if (error) { log(error) } 
 		else {
 			// get current time to see which orders are too old
 			currentTime = Math.floor(new Date() / 1000);
-			log("Current open orders: " + Object.keys(data.result.open).length + ", max age: " + maxAgeSeconds / 60 / 60 + "h");
+			var openorders = Object.keys(data.result.open).length
+			if (openorders > 0) log("Open orders: " + openorders + ", max age: " + maxAgeSeconds / 60 + "m");
 
 			var numOrders = 0;
 
@@ -243,20 +300,20 @@ setInterval(function () {
 
 				numOrders++;
 
-				//log("order: " + data.result.open[order].descr.order + " for " + (data.result.open[order].vol * data.result.open[order].descr.price).toFixed(2));
-
 				// get the order open time 
 				orderTime = data.result.open[order].opentm;
 				orderType = data.result.open[order].descr.type;
 				orderType2 = data.result.open[order].descr.ordertype;
 
 				// cancel order if it is too old
-				if (orderTime + maxAgeSeconds < currentTime) {
+				if (orderTime + maxAgeSeconds < currentTime && orderType2 == "limit") {
 					log("Cancelling order #" + numOrders + " " + order + "...");
 					kraken.api('CancelOrder', {
 						"txid": order
 					}, function (error, data) {
-						if (error) {} //error) log(error);
+						if (error) {
+							log("Error cancelling order: " + error)
+						} 
 					});
 				}
 
@@ -270,7 +327,9 @@ var trades = []
 // get trade history info
 setInterval(function () {
 	kraken.api('TradesHistory', null, function (error, tradesHistoryData) {
-		if (error) console.log(error)
+		if (error) {
+			log("Error updating trades history: " + error)
+		}
 		else {
 			trades = []
 			for (var trade in tradesHistoryData.result.trades)
@@ -281,6 +340,8 @@ setInterval(function () {
 }, 1000 * 57)
 
 var wallet = {}
+
+var balanceHistory = []
 
 // get trade balance info
 setInterval(function () {
@@ -295,6 +356,8 @@ setInterval(function () {
 			balance = parseFloat(tradeBalanceData.result.eb).toFixed(2)
 			log("Trade balance: " + balance)
 
+			balanceHistory[new Date().toISOString().substring(0,13)] = balance
+
 			// get asset balance
 			kraken.api('Balance', null, function (error, balanceData) {
 
@@ -305,7 +368,7 @@ setInterval(function () {
 					if (!wallet) wallet = {}
 					for (var asset in balanceData.result) {
 						var amount = parseFloat(balanceData.result[asset])
-						if (amount==0) return
+						if (amount==0) continue
 
 						if (!wallet[asset]) wallet[asset] = {}
 						wallet[asset]['asset'] = asset
@@ -327,6 +390,11 @@ function calculatevolume(pair, price) {
 	if (currency == "EUR") return (fixedTradeEur / price);
 	else if (currency == "XBT") return (fixedTradeBtc / price);
 	else if (currency == "ETH") return (fixedTradeEth / price);
+	else {
+		log("Error while calculating volume for " + pair)
+		process.exit(1)
+		
+	}
 }
 
 // buy for a given price with built in timer with profit close order
@@ -345,7 +413,7 @@ function buy(pair, volume, price, timer) {
 			"price": price,
 			"expiretm": "+" + timer,
 		}, function (error, buydata) {
-			if (error) {} else if (buydata) {
+			if (error) { log(error) } else if (buydata) {
 				log("[TRADE] " + buydata["result"]["descr"]["order"], pair);
 			}
 		});
@@ -368,7 +436,7 @@ function sell(pair, volume, price, timer) {
 			"price": price,
 			"expiretm": "+" + timer,
 		}, function (error, selldata) {
-			if (error) {} //error) log("Sell order failed: "+error,pair)
+			if (error) { log(error) } //error) log("Sell order failed: "+error,pair)
 			else if (selldata) {
 				log("[TRADE] " + selldata["result"]["descr"]["order"], pair);
 			}
@@ -376,38 +444,13 @@ function sell(pair, volume, price, timer) {
 	}
 }
 
-// quick hack: clean up volume to deal with new trade restrictions
+// clean up price to deal with new trade restrictions
 function cleanupPrice(pair, price) {
-	if (pair == "XZECZEUR") price = price.toFixed(2);
-	else if (pair == "ADAEUR") price = price.toFixed(6);
-	else if (pair == "BCHEUR") price = price.toFixed(1);
-	else if (pair == "BCHXBT") price = price.toFixed(5);
-	else if (pair == "DASHEUR") price = price.toFixed(2);
-	else if (pair == "DASHXBT") price = price.toFixed(5);
-	else if (pair == "EOSEUR") price = price.toFixed(4);
-	else if (pair == "EOSXBT") price = price.toFixed(7);
-	else if (pair == "GNOETH") price = price.toFixed(4);
-	else if (pair == "GNOEUR") price = price.toFixed(2);
-	else if (pair == "GNOXBT") price = price.toFixed(5);
-	else if (pair == "QTUMEUR") price = price.toFixed(5);
-	else if (pair == "XETCXXBT") price = price.toFixed(6);
-	else if (pair == "XETCZEUR") price = price.toFixed(3);
-	else if (pair == "XETHXXBT") price = price.toFixed(5);
-	else if (pair == "XETHZEUR") price = price.toFixed(2);
-	else if (pair == "XICNXETH") price = price.toFixed(6);
-	else if (pair == "XICNXXBT") price = price.toFixed(6);
-	else if (pair == "XLTCXXBT") price = price.toFixed(6);
-	else if (pair == "XLTCZEUR") price = price.toFixed(2);
-	else if (pair == "XMLNXETH") price = price.toFixed(5);
-	else if (pair == "XREPXXBT") price = price.toFixed(6);
-	else if (pair == "XREPZEUR") price = price.toFixed(3);
-	else if (pair == "XTZEUR") price = price.toFixed(4);
-	else if (pair == "XXBTZEUR") price = price.toFixed(1);
-	else if (pair == "XXLMXXBT") price = price.toFixed(8);
-	else if (pair == "XXLMZEUR") price = price.toFixed(6);
-	else if (pair == "XXMRZEUR") price = price.toFixed(2);
-	else if (pair == "XXRPXXBT") price = price.toFixed(8);
-	else if (pair == "XXRPZEUR") price = price.toFixed(5);
-	else if (pair == "XZECXXBT") price = price.toFixed(5);
-	return price;
+
+	var precision = pairPrecision[pair]
+	if (precision) return price.toFixed(precision)
+	else {
+		log("Error: Unknown price format for pair: " + pair)
+		return price
+	}
 }
