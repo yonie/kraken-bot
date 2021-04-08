@@ -1,8 +1,10 @@
 
 
 settings.js
-
-
+package-lock.json
+launch.json
+.eslintrc.json
+.vscode
 
 
 # default Node gitignore follows
