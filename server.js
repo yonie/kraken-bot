@@ -1,3 +1,5 @@
+// TODO: enable trading against other assets instead of EUR
+
 // logging
 
 var log = require("./log.js");
@@ -109,6 +111,9 @@ server.on('request', (request, response) => {
             }
             response.write("</ul>")
         }
+
+        // FIXME: if (orders) display filtered orders
+
         if (balanceHistory) {
             for (var i in balanceHistory) {
                 response.write("<p>" + i + " " + balanceHistory[i] + "</p>")
@@ -243,7 +248,7 @@ function getTicker() {
 
                     // we dont want to spend too much right now
                     // make sure we don't buy stuff below minimum trade volume
-                    var shareOfWallet = 0.75
+                    const shareOfWallet = 0.75
                     if (wallet['ZEUR'] && wallet['ZEUR'].amount > balance * shareOfWallet && tradevolume > minvolume) {
 
                         var buyPrice = lasttrade * 0.995
@@ -272,7 +277,9 @@ function getTicker() {
 
                 if (wallet && wallet[asset] && wallet[asset]['amount'] > 0) {
 
-                    var sellPrice = lasttrade * 1.0427
+                    // raise the sell price based on the buy parameters
+                    var sellmod = (((buyMoveLimit - (buyTolerance / 10)) * 0.61) * .01) + 1 // (10-3) * 0.61 = 4.27%
+                    var sellPrice = lasttrade * sellmod // 1.0427
 
                     // quick hack for API
                     sellPrice = trimPriceForAPI(pair, sellPrice)
