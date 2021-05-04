@@ -1,7 +1,4 @@
-// TODO: enable trading against other assets instead of EUR
-
 // logging
-
 var log = require("./log.js");
 log("initializing..")
 
@@ -23,7 +20,8 @@ const numHistory = 100
 
 var maxAgeSeconds = settings.maxAgeSeconds;
 
-var fixedTradeEur = 30
+// TODO: enable trading against other assets instead of EUR
+const fixedTradeEur = 30
 
 // minimum trade volume we want to see (in eur)
 const minvolume = 50000
@@ -247,9 +245,10 @@ function getTicker() {
                 if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
 
                     // we dont want to spend too much right now
-                    // make sure we don't buy stuff below minimum trade volume
+                    // also make sure we don't buy stuff below minimum trade volume
                     const shareOfWallet = 0.75
-                    if (wallet['ZEUR'] && wallet['ZEUR'].amount > balance * shareOfWallet && tradevolume > minvolume) {
+                    const stablestuff = (wallet['PAXG'] ? wallet['PAXG'].value : 0)
+                    if (wallet['ZEUR'] && (wallet['ZEUR'].amount + stablestuff) > balance * shareOfWallet && tradevolume > minvolume) {
 
                         var buyPrice = lasttrade * 0.995
                         var buyVolume = (fixedTradeEur / buyPrice).toFixed(8)
