@@ -16,7 +16,7 @@ const trading = true
 
 var ordersDirty = true
 
-const numHistory = 100
+const numHistory = 150
 
 var maxAgeSeconds = settings.maxAgeSeconds;
 
@@ -241,12 +241,21 @@ function getTicker() {
                 // make sure we have order info before we start trading
                 if (ordersDirty) return
 
+                let btcPrice = ticker['XXBTZEUR'] ? parseFloat(ticker['XXBTZEUR'].split(" ")[0]) : null
+                if (btcPrice && btcPrice < 50000) buyMoveLimit = 15
+                if (btcPrice && btcPrice < 25000) buyMoveLimit = 10
+
                 // determine if we want to buy
                 if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
 
                     // we dont want to spend too much right now
                     // also make sure we don't buy stuff below minimum trade volume
-                    const shareOfWallet = 0.75
+                    let shareOfWallet = 0.75
+                    if (btcPrice && btcPrice < 40000) shareOfWallet = 0.66
+                    if (btcPrice && btcPrice < 35000) shareOfWallet = 0.60
+                    if (btcPrice && btcPrice < 30000) shareOfWallet = 0.50
+                    if (btcPrice && btcPrice < 25000) shareOfWallet = 0.40
+                    if (btcPrice && btcPrice < 20000) shareOfWallet = 0.25
                     const stablestuff = (wallet['PAXG'] ? wallet['PAXG'].value : 0)
                     if (wallet['ZEUR'] && (wallet['ZEUR'].amount + stablestuff) > balance * shareOfWallet && tradevolume > minvolume) {
 
@@ -276,9 +285,9 @@ function getTicker() {
 
                 if (wallet && wallet[asset] && wallet[asset]['amount'] > 0) {
 
-                    // raise the sell price based on the buy parameters
-                    var sellmod = (((buyMoveLimit - (buyTolerance / 10)) * 0.61) * .01) + 1 // (10-3) * 0.61 = 4.27%
-                    var sellPrice = lasttrade * sellmod // 1.0427
+                    // raise the sell price based on the buy parameters and some voodoo values
+                    var sellmod = (((move - (buyTolerance / 10)) * 0.61) * .01) + 1 // (10-3) * 0.61 = 4.27%
+                    var sellPrice = lasttrade * sellmod 
 
                     // quick hack for API
                     sellPrice = trimPriceForAPI(pair, sellPrice)
@@ -337,7 +346,7 @@ function getSellOrderVolume(pair) {
     for (var i in orders) {
         // we need to use altnames lookup because of shitty kraken implementation
         if (orders[i].descr.pair == altnames[pair] && orders[i].descr.type == "sell") {
-            sum = sum + (orders[i].vol)
+            sum = sum + parseFloat(orders[i].vol)
         }
     }
 
@@ -422,6 +431,18 @@ function getTradeHistory() {
                 } else {
                     for (var trade in tradesHistoryData.result.trades)
                         trades.push(tradesHistoryData.result.trades[trade])
+
+                    kraken.api('TradesHistory', {
+                        'ofs': 100
+                    }, function (error, tradesHistoryData) {
+                        if (error) {
+                            log("Error updating trades history: " + error)
+                        } else {
+                            for (var trade in tradesHistoryData.result.trades)
+                                trades.push(tradesHistoryData.result.trades[trade])
+                        }
+                    })
+
                 }
             })
         }
