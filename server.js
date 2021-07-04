@@ -285,8 +285,8 @@ function getTicker() {
 
                 if (wallet && wallet[asset] && wallet[asset]['amount'] > 0) {
 
-                    // raise the sell price based on the buy parameters and some voodoo values
-                    var sellmod = (((move - (buyTolerance / 10)) * 0.61) * .01) + 1 // (10-3) * 0.61 = 4.27%
+                    // raise the sell price based on movement and a magic value
+                    var sellmod = (((Math.max(move,buyMoveLimit) - (buyTolerance / 10)) * 0.61) * .01) + 1 // (10-3) * 0.61 = 4.27%
                     var sellPrice = lasttrade * sellmod 
 
                     // quick hack for API
