@@ -12,7 +12,7 @@ var timer = settings.timer;
 var maxAgeSeconds = settings.maxAgeSeconds;
 
 // how often does the engine refresh stuff, in seconds
-var engineTick = 61 
+var engineTick = 61
 
 // set to false to disable any trading actions, rendering the bot passive
 const trading = true
@@ -20,8 +20,11 @@ const trading = true
 // how many trades to show in the history list of the web client
 const numHistory = 150
 
-// how much to buy each trade (in eur). 
+// how much to buy each trade (in eur)
 const fixedBuyAmount = 30
+
+// minimum trade amount before trying a sell order (in eur)
+const minSellAmount = 5;
 
 // maximum % each asset can take up of total balance
 const maxSharePerAsset = 0.05;
@@ -247,6 +250,7 @@ function getTicker() {
                 // make sure we have order info before we start trading
                 if (ordersDirty) return
 
+                // adjust how fact we buy based on btc price
                 let btcPrice = ticker['XXBTZEUR'] ? parseFloat(ticker['XXBTZEUR'].split(" ")[0]) : null
                 if (btcPrice && btcPrice < 50000) buyMoveLimit = 15
                 if (btcPrice && btcPrice < 25000) buyMoveLimit = 10
@@ -254,15 +258,18 @@ function getTicker() {
                 // determine if we want to buy
                 if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
 
-                    // we dont want to spend too much right now
-                    // also make sure we don't buy stuff below minimum trade volume
+                    // adjust how much we buy based on btc price
                     let shareOfWallet = 0.75
                     if (btcPrice && btcPrice < 40000) shareOfWallet = 0.66
                     if (btcPrice && btcPrice < 35000) shareOfWallet = 0.60
                     if (btcPrice && btcPrice < 30000) shareOfWallet = 0.50
                     if (btcPrice && btcPrice < 25000) shareOfWallet = 0.40
                     if (btcPrice && btcPrice < 20000) shareOfWallet = 0.25
+
+                    // make sure stable coins don't count toward "share of wallet"
                     const stablestuff = (wallet['PAXG'] ? wallet['PAXG'].value : 0)
+
+                    // also make sure we don't buy stuff below minimum trade volume
                     if (wallet['ZEUR'] && (wallet['ZEUR'].amount + stablestuff) > balance * shareOfWallet && tradevolume > minTradeVolume) {
 
                         var buyPrice = lasttrade * 0.995
@@ -281,7 +288,7 @@ function getTicker() {
                             // buy stuff
                             buy(pair, buyVolume, buyPrice, timer)
 
-                            // TODO: dirty hack to make the orders again "dirty" otherwise we keep ordering until next update
+                            // make the order book "dirty" again otherwise we keep ordering until next update
                             ordersDirty = true
                             setTimeout(updateOpenOrders, 5000)
 
@@ -291,9 +298,9 @@ function getTicker() {
 
                 if (wallet && wallet[asset] && wallet[asset]['amount'] > 0) {
 
-                    // raise the sell price based on movement and a magic value
-                    var sellmod = (((Math.max(move,buyMoveLimit) - (buyTolerance / 10)) * 0.61) * .01) + 1 // (10-3) * 0.61 = 4.27%
-                    var sellPrice = lasttrade * sellmod 
+                    // raise the sell price based on movement and a magic value: (10-3) * 0.61 = 4.27%
+                    var sellmod = (((Math.max(move, buyMoveLimit) - (buyTolerance / 10)) * 0.61) * .01) + 1
+                    var sellPrice = lasttrade * sellmod
 
                     // quick hack for API
                     sellPrice = trimPriceForAPI(pair, sellPrice)
@@ -303,7 +310,7 @@ function getTicker() {
                     var sellVolume = wallet[asset].amount - openSellOrderVolume
 
                     // don't trade if have too little to sell
-                    if (sellVolume * sellPrice > 5) {
+                    if (sellVolume * sellPrice > minSellAmount) {
 
                         sell(pair, sellVolume, sellPrice, timer);
 
