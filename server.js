@@ -4,31 +4,37 @@ log("initializing..")
 
 // get settings 
 var settings = require("./settings.js");
-var krakenkey = settings.krakenkey;
-var krakenpasscode = settings.krakenpasscode;
+var krakenKey = settings.krakenkey;
+var krakenPasscode = settings.krakenpasscode;
 var buyTolerance = settings.buyTolerance;
 var buyMoveLimit = settings.buyMoveLimit;
 var timer = settings.timer;
-var engineTick = 61 // seconds
-
-// do we even trade?
-const trading = true
-
-var ordersDirty = true
-
-const numHistory = 150
-
 var maxAgeSeconds = settings.maxAgeSeconds;
 
-// TODO: enable trading against other assets instead of EUR
-const fixedTradeEur = 30
+// how often does the engine refresh stuff, in seconds
+var engineTick = 61 
+
+// set to false to disable any trading actions, rendering the bot passive
+const trading = true
+
+// how many trades to show in the history list of the web client
+const numHistory = 150
+
+// how much to buy each trade (in eur). 
+const fixedBuyAmount = 30
+
+// maximum % each asset can take up of total balance
+const maxSharePerAsset = 0.05;
 
 // minimum trade volume we want to see (in eur)
-const minvolume = 50000
+const minTradeVolume = 50000
+
+// flag used to keep the engine aware whether orders have been updated
+let ordersDirty = true
 
 // set up kraken api
 var KrakenClient = require('kraken-api');
-var kraken = new KrakenClient(krakenkey, krakenpasscode);
+var kraken = new KrakenClient(krakenKey, krakenPasscode);
 
 var balance
 
@@ -257,10 +263,10 @@ function getTicker() {
                     if (btcPrice && btcPrice < 25000) shareOfWallet = 0.40
                     if (btcPrice && btcPrice < 20000) shareOfWallet = 0.25
                     const stablestuff = (wallet['PAXG'] ? wallet['PAXG'].value : 0)
-                    if (wallet['ZEUR'] && (wallet['ZEUR'].amount + stablestuff) > balance * shareOfWallet && tradevolume > minvolume) {
+                    if (wallet['ZEUR'] && (wallet['ZEUR'].amount + stablestuff) > balance * shareOfWallet && tradevolume > minTradeVolume) {
 
                         var buyPrice = lasttrade * 0.995
-                        var buyVolume = (fixedTradeEur / buyPrice).toFixed(8)
+                        var buyVolume = (fixedBuyAmount / buyPrice).toFixed(8)
                         if (ordermin[pair]) buyVolume = Math.max(buyVolume, ordermin[pair])
 
                         // quick hack to ensure proper input for API
@@ -270,7 +276,7 @@ function getTicker() {
                         var openBuyOrderValue = sumOpenBuyOrderValue(pair)
                         var ownedAmount = (wallet && wallet[asset] ? wallet[asset]['value'] : null)
 
-                        if ((buyVolume * buyPrice) + openBuyOrderValue + ownedAmount < 0.02 * balance) {
+                        if ((buyVolume * buyPrice) + openBuyOrderValue + ownedAmount < maxSharePerAsset * balance) {
 
                             // buy stuff
                             buy(pair, buyVolume, buyPrice, timer)
