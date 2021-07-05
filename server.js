@@ -399,11 +399,11 @@ function updateOpenOrders() {
 
                 // get the order open time 
                 var orderTime = data.result.open[order].opentm;
-                var orderType = data.result.open[order].descr.type;
-                var orderType2 = data.result.open[order].descr.ordertype;
+                var orderBuySell = data.result.open[order].descr.type;
+                var orderLimitMarket = data.result.open[order].descr.ordertype;
 
                 // cancel our buy limit orders if one is too old
-                if (orderTime + maxAgeSeconds < currentTime && orderType == "buy" && orderType2 == "limit") {
+                if (orderTime + maxAgeSeconds < currentTime && orderBuySell == "buy" && orderLimitMarket == "limit") {
                     log("Cancelling order #" + numOrders + " " + order + "...");
                     kraken.api('CancelOrder', {
                         "txid": order
