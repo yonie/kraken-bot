@@ -2,6 +2,15 @@
 var log = require("./log.js");
 log("initializing..")
 
+// eslint-disable-next-line no-unused-vars
+var dns = require('dns'),
+    // eslint-disable-next-line no-unused-vars
+    dnscache = require('dnscache')({
+        "enable": true,
+        "ttl": 1800,
+        "cachesize": 1000
+    });
+
 // get settings 
 var settings = require("./settings.js");
 var krakenKey = settings.krakenkey;
@@ -252,8 +261,9 @@ function getTicker() {
 
                 // adjust how fact we buy based on btc price
                 let btcPrice = ticker['XXBTZEUR'] ? parseFloat(ticker['XXBTZEUR'].split(" ")[0]) : null
-                if (btcPrice && btcPrice < 50000) buyMoveLimit = 15
-                if (btcPrice && btcPrice < 25000) buyMoveLimit = 10
+                if (btcPrice && btcPrice < 50000) buyMoveLimit = 25
+                if (btcPrice && btcPrice < 35000) buyMoveLimit = 20
+                if (btcPrice && btcPrice < 25000) buyMoveLimit = 15
 
                 // determine if we want to buy
                 if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
@@ -314,7 +324,7 @@ function getTicker() {
 
                         sell(pair, sellVolume, sellPrice, timer);
 
-                        // TODO: dirty hack to make the orders again "dirty" otherwise we keep ordering until next update
+                        // make the order book "dirty" again otherwise we keep ordering until next update
                         ordersDirty = true
                         setTimeout(updateOpenOrders, 5000)
 
