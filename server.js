@@ -94,7 +94,7 @@ server.on('request', (request, response) => {
         })
         response.write("<!doctype HTML><html><head><title>kraken</title></head><body>")
         response.write("<h1>kraken</h1>")
-        if (balance) response.write("<h2>latest balance: " + balance + "</h2>")
+        if (balance && wallet['ZEUR'] && wallet['ZEUR'].value) response.write("<h2>latest balance: " + balance + " (" + ((wallet['ZEUR'].value / balance) * 100).toFixed(0) + "% free)</h2>")
         response.write("<a href=\"/wallet\">wallet</a><br/>")
         response.write("<a href=\"/trades\">trades</a><br/>")
         if (orders) response.write("<a href=\"/orders\">orders (" + orders.length + ")</a><br/>")
