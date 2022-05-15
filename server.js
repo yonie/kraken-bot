@@ -502,18 +502,23 @@ function getTradeBalance() {
                     if (!wallet) wallet = {}
                     for (var asset in balanceData.result) {
                         var amount = parseFloat(balanceData.result[asset])
-                        if (amount == 0) continue
 
-                        // FIXME: dirty hack due to messy kraken API 
-                        // ticker uses XDGEUR, wallet uses XXDG
-                        if (asset.indexOf("XXDG") > -1) asset = "XDG"
+                        if (amount == 0) {
+                            // clean up wallet for items that we no longer have
+                            wallet[asset] = null
 
-                        if (!wallet[asset]) wallet[asset] = {}
-                        wallet[asset]['asset'] = asset
-                        wallet[asset]['amount'] = amount
+                        } else {
+                            // FIXME: dirty hack due to messy kraken API 
+                            // ticker uses XDGEUR, wallet uses XXDG
+                            if (asset.indexOf("XXDG") > -1) asset = "XDG"
 
-                        // FIXME: special hack to give base currency balance also a value
-                        if (asset == "ZEUR") wallet[asset]['value'] = amount
+                            if (!wallet[asset]) wallet[asset] = {}
+                            wallet[asset]['asset'] = asset
+                            wallet[asset]['amount'] = amount
+
+                            // FIXME: special hack to give base currency balance also a value
+                            if (asset == "ZEUR") wallet[asset]['value'] = amount
+                        }
                     }
                 }
             });
