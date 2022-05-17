@@ -383,38 +383,38 @@ setInterval(updateOpenOrders, 1000 * engineTick / 2)
 
 // get ticker info
 function updateOpenOrders() {
-    kraken.api('OpenOrders', null, function (error, data) {
+    kraken.api('OpenOrders', null, function (error, openOrders) {
 
+        // reinitialize orders 
         orders = []
 
         if (error) {
             log("Error fetching open orders: " + error)
         } else {
-            // get current time to see which orders are too old
-            var currentTime = Math.floor(new Date() / 1000);
-            var openorders = Object.keys(data.result.open).length
-            if (openorders > 0) log("Open orders: " + openorders + ", max age: " + maxAgeSeconds / 60 + "m");
-
-            var numOrders = 0;
+            var numOpenOrders = Object.keys(openOrders.result.open).length
+            if (numOpenOrders > 0) log("Open orders: " + numOpenOrders)
 
             // we're not going to cancel orders if we are not trading
             if (!trading) return
 
+            // get current time used to see which orders are too old
+            var currentTime = Math.floor(new Date() / 1000);
+
             // iterate through all the open orders
-            for (var order in data.result.open) {
+            for (var order in openOrders.result.open) {
 
-                orders.push(data.result.open[order])
-
-                numOrders++;
+                // fill the orders storage
+                orders.push(openOrders.result.open[order])
 
                 // get the order open time 
-                var orderTime = data.result.open[order].opentm;
-                var orderBuySell = data.result.open[order].descr.type;
-                var orderLimitMarket = data.result.open[order].descr.ordertype;
+                var orderTime = openOrders.result.open[order].opentm;
+                var orderBuySell = openOrders.result.open[order].descr.type;
+                var orderLimitMarket = openOrders.result.open[order].descr.ordertype;
 
                 // cancel our buy limit orders if one is too old
                 if (orderTime + maxAgeSeconds < currentTime && orderBuySell == "buy" && orderLimitMarket == "limit") {
-                    log("Cancelling order #" + numOrders + " " + order + "...");
+
+                    log("Cancelling order: " + order + "...");
                     kraken.api('CancelOrder', {
                         "txid": order
                     }, function (error) {
@@ -496,29 +496,34 @@ function getTradeBalance() {
             kraken.api('Balance', null, function (error, balanceData) {
 
                 if (error) {
+
                     log("Error getting balance: " + error)
+
                 } else {
-                    // FIXME: why is this here? we already init wallet
-                    if (!wallet) wallet = {}
-                    for (var asset in balanceData.result) {
-                        var amount = parseFloat(balanceData.result[asset])
 
-                        if (amount == 0) {
-                            // clean up wallet for items that we no longer have
-                            wallet[asset] = null
-
-                        } else {
-                            // FIXME: dirty hack due to messy kraken API 
-                            // ticker uses XDGEUR, wallet uses XXDG
-                            if (asset.indexOf("XXDG") > -1) asset = "XDG"
-
-                            if (!wallet[asset]) wallet[asset] = {}
-                            wallet[asset]['asset'] = asset
-                            wallet[asset]['amount'] = amount
-
-                            // FIXME: special hack to give base currency balance also a value
-                            if (asset == "ZEUR") wallet[asset]['value'] = amount
+                    // check the items in our current wallet if they are still there
+                    for (var walletAsset in wallet) {
+                        if (balanceData.result[walletAsset] == null) {
+                            wallet[walletAsset] = null
                         }
+                    }
+
+                    for (var balanceAsset in balanceData.result) {
+                        var amount = parseFloat(balanceData.result[balanceAsset])
+
+                        // FIXME: dirty hack due to messy kraken API 
+                        // ticker uses XDGEUR, balance uses XXDG
+                        if (balanceAsset.indexOf("XXDG") > -1) {
+                            balanceAsset = "XDG"
+                        }
+
+                        if (!wallet[balanceAsset]) wallet[balanceAsset] = {}
+                        wallet[balanceAsset]['asset'] = balanceAsset
+                        wallet[balanceAsset]['amount'] = amount
+
+                        // FIXME: special hack to give base currency balance also a value
+                        if (balanceAsset == "ZEUR") wallet[balanceAsset]['value'] = amount
+
                     }
                 }
             });
