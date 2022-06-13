@@ -277,7 +277,7 @@ function getTicker() {
                     if (btcPrice && btcPrice < 20000) shareOfWallet = 0.25
 
                     // make sure stable coins don't count toward "share of wallet"
-                    const stablestuff = (wallet['PAXG'] ? wallet['PAXG'].value : 0)
+                    const stablestuff = (wallet['PAXG'] && wallet['PAXG'].value ? wallet['PAXG'].value : 0)
 
                     // also make sure we don't buy stuff below minimum trade volume
                     if (wallet['ZEUR'] && (wallet['ZEUR'].amount + stablestuff) > balance * shareOfWallet && tradevolume > minTradeVolume) {
