@@ -68,6 +68,23 @@ server.on("request", (request, response) => {
       "Content-Type": contenttype,
     });
     response.write(JSON.stringify(wallet));
+  } else if (request.url.includes("/balance/btc")) {
+    contenttype = "application/json";
+    response.writeHead(200, {
+      "Content-Type": contenttype,
+    });
+    if (balance && ticker && ticker["XXBTZEUR"]) {
+      var result = balance / parseInt(ticker["XXBTZEUR"].split(" ")[0]);
+      response.write(JSON.stringify(result));
+    }
+  } else if (request.url.includes("/balance/eur")) {
+    contenttype = "application/json";
+    response.writeHead(200, {
+      "Content-Type": contenttype,
+    });
+    if (balance) {
+      response.write(JSON.stringify(parseFloat(balance)));
+    }
   } else if (request.url.includes("/trades")) {
     contenttype = "application/json";
     response.writeHead(200, {
@@ -103,6 +120,14 @@ server.on("request", (request, response) => {
           ((wallet["ZEUR"].value / balance) * 100).toFixed(0) +
           "% free)</h2>"
       );
+
+    if (balance && ticker && ticker["XXBTZEUR"])
+      response.write(
+        `<h3>${(
+          balance / parseInt(ticker["XXBTZEUR"].split(" ")[0])
+        ).toPrecision(4)} btc</h3>`
+      );
+
     response.write('<a href="/wallet">wallet</a><br/>');
     response.write('<a href="/trades">trades</a><br/>');
     if (orders)
