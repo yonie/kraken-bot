@@ -269,10 +269,19 @@ function getTicker() {
           if (pair.indexOf("CHZEUR") > -1) asset = "CHZ";
 
           // for each pair see if we need to trade
-          var lasttrade = tickerdata.result[pair].c[0];
-          var daylow = tickerdata.result[pair].l[1];
+          var lasttrade = trimToPrecision(
+            pair,
+            parseFloat(tickerdata.result[pair].c[0])
+          );
+          var daylow = trimToPrecision(
+            pair,
+            parseFloat(tickerdata.result[pair].l[1])
+          );
           var tradevolume = parseInt(tickerdata.result[pair].v[1] * lasttrade);
-          var dayhi = tickerdata.result[pair].h[1];
+          var dayhi = trimToPrecision(
+            pair,
+            parseFloat(tickerdata.result[pair].h[1])
+          );
 
           // update wallet
           if (wallet[asset]) {
