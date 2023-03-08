@@ -19,6 +19,7 @@
     "trades.js"
   ],
   "dependencies": {
+    "decimal.js": "^10.4.3",
     "dnscache": "^1.0.2",
     "kraken-api": "^1.0.1"
   },

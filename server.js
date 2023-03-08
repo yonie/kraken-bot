@@ -213,7 +213,7 @@ kraken.api("AssetPairs", null, function (error, pairdata) {
 
     // call cleanup to see if we have covered all the asset pairs
     pairs.forEach(function (pair) {
-      trimPriceForAPI(pair, 1);
+      trimToPrecision(pair, 1);
     });
 
     shuffleArray(pairs);
@@ -351,7 +351,7 @@ function getTicker() {
                 buyVolume = Math.max(buyVolume, ordermin[pair]);
 
               // quick hack to ensure proper input for API
-              buyPrice = trimPriceForAPI(pair, buyPrice);
+              buyPrice = trimToPrecision(pair, buyPrice);
 
               // if we have too much of one asset (including orders!), don't buy more
               var openBuyOrderValue = sumOpenBuyOrderValue(pair);
@@ -380,15 +380,22 @@ function getTicker() {
             var sellPrice = lasttrade * sellmod;
 
             // quick hack for API
-            sellPrice = trimPriceForAPI(pair, sellPrice);
+            sellPrice = trimToPrecision(pair, sellPrice);
 
             // check open orders to see if a sell order is even still possible
-            var openSellOrderVolume = getSellOrderVolume(pair);
-            var sellVolume = wallet[asset].amount - openSellOrderVolume;
+            const openSellOrderVolume = getSellOrderVolume(pair);
+
+            const walletAmount = wallet[asset].amount;
+
+            // sell volume is what remains decucing open orders from the held amount
+            const sellVolume = trimToPrecision(
+              pair,
+              walletAmount - openSellOrderVolume
+            );
 
             // don't trade if have too little to sell
             if (sellVolume * sellPrice > minSellAmount) {
-              // if we are in stoploss mode, sell with stoploss
+              // TODO: if we are in stoploss mode, sell with stoploss
 
               sell(pair, sellVolume, sellPrice);
 
@@ -663,7 +670,7 @@ function sell(pair, volume, price) {
 }
 
 // clean up price to deal with new trade restrictions
-function trimPriceForAPI(pair, price) {
+function trimToPrecision(pair, price) {
   var precision = pairPrecision[pair];
   if (precision > -1) return price.toFixed(precision);
   else {
