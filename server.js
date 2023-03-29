@@ -397,10 +397,7 @@ function getTicker() {
             const walletAmount = wallet[asset].amount;
 
             // sell volume is what remains decucing open orders from the held amount
-            const sellVolume = trimToPrecision(
-              pair,
-              walletAmount - openSellOrderVolume
-            );
+            const sellVolume = walletAmount - openSellOrderVolume;
 
             // don't trade if have too little to sell
             if (sellVolume * sellPrice > minSellAmount) {
