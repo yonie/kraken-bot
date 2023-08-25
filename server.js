@@ -39,7 +39,7 @@ const minSellAmount = 5;
 const maxSharePerAsset = 0.05;
 
 // minimum trade volume we want to see (in eur)
-const minTradeVolume = 5000;
+const minTradeVolume = 10000;
 
 // flag used to keep the engine aware whether orders have been updated
 let ordersDirty = true;
@@ -68,7 +68,11 @@ server.on("request", (request, response) => {
       "Content-Type": contenttype,
     });
     response.write(JSON.stringify(wallet));
-  } else if (request.url.includes("/balance/btc")) {
+    response.end();
+    return;
+  }
+
+  if (request.url.includes("/balance/btc")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
@@ -77,7 +81,11 @@ server.on("request", (request, response) => {
       var result = balance / parseInt(ticker["XXBTZEUR"].split(" ")[0]);
       response.write(JSON.stringify(result));
     }
-  } else if (request.url.includes("/balance/eur")) {
+    response.end();
+    return;
+  }
+
+  if (request.url.includes("/balance/eur")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
@@ -85,104 +93,119 @@ server.on("request", (request, response) => {
     if (balance) {
       response.write(JSON.stringify(parseFloat(balance)));
     }
-  } else if (request.url.includes("/trades")) {
+    response.end();
+    return;
+  }
+
+  if (request.url.includes("/trades")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
     });
     response.write(JSON.stringify(trades));
-  } else if (request.url.includes("/orders")) {
+    response.end();
+    return;
+  }
+  
+  if (request.url.includes("/orders")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
     });
     response.write(JSON.stringify(orders));
-  } else if (request.url.includes("/ticker")) {
+    response.end();
+    return;
+  }
+  
+  if (request.url.includes("/ticker")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
     });
     response.write(JSON.stringify(ticker));
-  } else {
-    contenttype = "text/html";
-    response.writeHead(200, {
-      "Content-Type": contenttype,
-    });
+    response.end();
+    return;
+  } 
+
+  contenttype = "text/html";
+  response.writeHead(200, {
+    "Content-Type": contenttype,
+  });
+  response.write(
+    "<!doctype HTML><html><head><title>kraken</title></head><body>"
+  );
+  response.write("<h1>kraken</h1>");
+  if (balance && wallet["ZEUR"] && wallet["ZEUR"].value)
     response.write(
-      "<!doctype HTML><html><head><title>kraken</title></head><body>"
+      "<h2>latest balance: " +
+        balance +
+        " (" +
+        ((wallet["ZEUR"].value / balance) * 100).toFixed(0) +
+        "% free)</h2>"
     );
-    response.write("<h1>kraken</h1>");
-    if (balance && wallet["ZEUR"] && wallet["ZEUR"].value)
-      response.write(
-        "<h2>latest balance: " +
-          balance +
-          " (" +
-          ((wallet["ZEUR"].value / balance) * 100).toFixed(0) +
-          "% free)</h2>"
-      );
 
-    if (balance && ticker && ticker["XXBTZEUR"])
-      response.write(
-        `<h3>${(
-          balance / parseInt(ticker["XXBTZEUR"].split(" ")[0])
-        ).toPrecision(4)} btc</h3>`
-      );
+  if (balance && ticker && ticker["XXBTZEUR"])
+    response.write(
+      `<h3>${(
+        balance / parseInt(ticker["XXBTZEUR"].split(" ")[0])
+      ).toPrecision(4)} btc</h3>`
+    );
 
-    response.write('<a href="/wallet">wallet</a><br/>');
-    response.write('<a href="/trades">trades</a><br/>');
-    if (orders)
-      response.write(
-        '<a href="/orders">orders (' + orders.length + ")</a><br/>"
-      );
-    response.write('<a href="/ticker">ticker</a><br/>');
+  response.write('<a href="/wallet">wallet</a><br/>');
+  response.write('<a href="/trades">trades</a><br/>');
+  if (orders)
+    response.write(
+      '<a href="/orders">orders (' + orders.length + ")</a><br/>"
+    );
+  response.write('<a href="/ticker">ticker</a><br/>');
 
-    let requestedPair = url.parse(request.url, true).query["pair"];
-    if (requestedPair)
-      response.write(
-        "<h3>" +
-          requestedPair +
-          ": " +
-          (ticker ? ticker[requestedPair] : "") +
-          "</h3>"
-      );
+  let requestedPair = url.parse(request.url, true).query["pair"];
+  if (requestedPair)
+    response.write(
+      "<h3>" +
+        requestedPair +
+        ": " +
+        (ticker ? ticker[requestedPair] : "") +
+        "</h3>"
+    );
 
-    if (trades) {
-      response.write("<p>latest trades:</p>");
-      response.write("<ul>");
-      for (i = 0; i < Math.min(trades.length, numHistory); i++) {
-        if (!trades[i]) continue;
-        if (!requestedPair || trades[i]["pair"] === requestedPair) {
-          response.write("<li>");
-          response.write(
-            "" + new Date(trades[i]["time"] * 1000).toLocaleString()
-          );
-          response.write(" ");
-          response.write(trades[i]["type"]);
-          response.write(" ");
-          response.write(trades[i]["vol"]);
-          response.write(' <a href="?pair=' + trades[i]["pair"] + '">');
-          response.write(trades[i]["pair"]);
-          response.write("</a> ");
-          response.write(" @ ");
-          response.write(trades[i]["price"]);
-          response.write(" = ");
-          response.write(trades[i]["cost"]);
-          response.write("</li>");
-        }
-      }
-      response.write("</ul>");
-    }
-
-    // FIXME: if (orders) display filtered orders
-
-    if (balanceHistory) {
-      for (let i in balanceHistory) {
-        response.write("<p>" + i + " " + balanceHistory[i] + "</p>");
+  if (trades) {
+    response.write("<p>latest trades:</p>");
+    response.write("<ul>");
+    for (i = 0; i < Math.min(trades.length, numHistory); i++) {
+      if (!trades[i]) continue;
+      if (!requestedPair || trades[i]["pair"] === requestedPair) {
+        response.write("<li>");
+        response.write(
+          "" + new Date(trades[i]["time"] * 1000).toLocaleString()
+        );
+        response.write(" ");
+        response.write(trades[i]["type"]);
+        response.write(" ");
+        response.write(trades[i]["vol"]);
+        response.write(' <a href="?pair=' + trades[i]["pair"] + '">');
+        response.write(trades[i]["pair"]);
+        response.write("</a> ");
+        response.write(" @ ");
+        response.write(trades[i]["price"]);
+        response.write(" = ");
+        response.write(trades[i]["cost"]);
+        response.write("</li>");
       }
     }
-    response.write("</body></html>");
+    response.write("</ul>");
   }
+
+  // FIXME: if (orders) display filtered orders
+
+  if (balanceHistory) {
+    for (let i in balanceHistory) {
+      response.write("<p>" + i + " " + balanceHistory[i] + "</p>");
+    }
+  }
+  response.write("</body></html>");
   response.end();
+  
 });
 
 let pairs = [];
