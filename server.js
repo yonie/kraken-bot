@@ -13,15 +13,15 @@ let dns = require("dns"),
 
 // get settings
 let settings = require("./settings.js");
-let krakenKey = settings.krakenkey;
-let krakenPasscode = settings.krakenpasscode;
-let buyTolerance = settings.buyTolerance;
+const krakenKey = settings.krakenkey;
+const krakenPasscode = settings.krakenpasscode;
+const buyTolerance = settings.buyTolerance;
 let buyMoveLimit = settings.buyMoveLimit;
-let timer = settings.timer;
-let maxAgeSeconds = settings.maxAgeSeconds;
+const timer = settings.timer;
+const stopLossMode = settings.stopLossMode;
 
 // how often does the engine refresh stuff, in seconds
-let engineTick = 61;
+let engineTick = 31;
 
 // set to false to disable any trading actions, rendering the bot passive
 const trading = true;
@@ -106,7 +106,7 @@ server.on("request", (request, response) => {
     response.end();
     return;
   }
-  
+
   if (request.url.includes("/orders")) {
     contenttype = "application/json";
     response.writeHead(200, {
@@ -116,7 +116,7 @@ server.on("request", (request, response) => {
     response.end();
     return;
   }
-  
+
   if (request.url.includes("/ticker")) {
     contenttype = "application/json";
     response.writeHead(200, {
@@ -125,7 +125,7 @@ server.on("request", (request, response) => {
     response.write(JSON.stringify(ticker));
     response.end();
     return;
-  } 
+  }
 
   contenttype = "text/html";
   response.writeHead(200, {
@@ -138,10 +138,10 @@ server.on("request", (request, response) => {
   if (balance && wallet["ZEUR"] && wallet["ZEUR"].value)
     response.write(
       "<h2>latest balance: " +
-        balance +
-        " (" +
-        ((wallet["ZEUR"].value / balance) * 100).toFixed(0) +
-        "% free)</h2>"
+      balance +
+      " (" +
+      ((wallet["ZEUR"].value / balance) * 100).toFixed(0) +
+      "% free)</h2>"
     );
 
   if (balance && ticker && ticker["XXBTZEUR"])
@@ -163,10 +163,10 @@ server.on("request", (request, response) => {
   if (requestedPair)
     response.write(
       "<h3>" +
-        requestedPair +
-        ": " +
-        (ticker ? ticker[requestedPair] : "") +
-        "</h3>"
+      requestedPair +
+      ": " +
+      (ticker ? ticker[requestedPair] : "") +
+      "</h3>"
     );
 
   if (trades) {
@@ -205,10 +205,10 @@ server.on("request", (request, response) => {
   }
   response.write("</body></html>");
   response.end();
-  
+
 });
 
-let pairs = [];
+let pairs;
 let pairsExploded;
 
 let altnames = [];
@@ -224,6 +224,7 @@ kraken.api("AssetPairs", null, function (error, pairdata) {
   }
 
   // push all pairs into an array
+  pairs = [];
   for (let assetpair in pairdata["result"]) {
     pairs.push(assetpair);
     altnames[assetpair] = pairdata["result"][assetpair].altname;
@@ -381,7 +382,7 @@ function getTicker() {
         );
 
         // determine if we want to buy
-        if (move >= buyMoveLimit && distancefromlow <= buyTolerance) {
+        if (!stopLossMode && move >= buyMoveLimit && distancefromlow <= buyTolerance) {
           // adjust how much we buy based on btc price
           let shareOfWallet = 0.75;
           if (btcPrice && btcPrice < 45000) shareOfWallet = 0.86;
@@ -420,7 +421,7 @@ function getTicker() {
               maxSharePerAsset * balance
             ) {
               // buy stuff
-              buy(pair, buyVolume, buyPrice, timer);
+              buy(pair, buyVolume);
 
               // make the order book "dirty" again otherwise we keep ordering until next update
               ordersDirty = true;
@@ -446,12 +447,12 @@ function getTicker() {
 
           // sell volume is what remains decucing open orders from the held amount
           const sellVolume = walletAmount - openSellOrderVolume;
-	
+
           // don't trade if have too little to sell
           if (sellVolume * sellPrice > minSellAmount) {
-            // TODO: if we are in stoploss mode, sell with stoploss
 
-            sell(pair, sellVolume, sellPrice);
+            if (!stopLossMode) sell("limit", pair, sellVolume, sellPrice);
+            if (stopLossMode) sell("stop-loss", pair, sellVolume, lasttrade * 0.97)
 
             // make the order book "dirty" again otherwise we keep ordering until next update
             ordersDirty = true;
@@ -532,33 +533,27 @@ function updateOpenOrders() {
 
     // iterate through all the open orders
     for (var order in openOrders.result.open) {
+
       // fill the orders storage
       orders.push(openOrders.result.open[order]);
 
-      // get the order open time
+      // get the order information
       var orderTime = openOrders.result.open[order].opentm;
       var orderBuySell = openOrders.result.open[order].descr.type;
       var orderLimitMarket = openOrders.result.open[order].descr.ordertype;
+      var orderPrice = openOrders.result.open[order].descr.price;
+      var orderPair = openOrders.result.open[order].descr.pair;
 
-      // cancel our buy limit orders if one is too old
-      if (
-        orderTime + maxAgeSeconds < currentTime &&
-        orderBuySell == "buy" &&
-        orderLimitMarket == "limit"
-      ) {
-        log("Cancelling order: " + order + "...");
-        kraken.api(
-          "CancelOrder",
-          {
-            txid: order,
-          },
-          function (error) {
-            if (error) {
-              log("Error cancelling order: " + error);
-            }
-          }
-        );
-      }
+      var currentPrice = (ticker && ticker[orderPair]) ? ticker[orderPair].split(" ")[0] : null;
+
+      // if we are in stoploss mode, cancel all limit sell orders
+      if (stopLossMode && orderBuySell == "sell" && orderLimitMarket == "limit") cancelOrder(order);
+
+      // in normal mode, cancel orders that are too far out
+      if (!stopLossMode && orderBuySell == "sell" && orderLimitMarket == "limit" && currentPrice && orderPrice > currentPrice * 10) cancelOrder(order)
+
+      // in stop loss mode, if we have a stop loss order that we should replan, cancel it so a new one can be made
+      if (stopLossMode && orderBuySell == "sell" && orderLimitMarket == "stop-loss" && currentPrice && orderPrice < currentPrice * 0.97) cancelOrder(order);
     }
 
     ordersDirty = false;
@@ -569,6 +564,22 @@ var trades = [];
 
 // get trade history info
 setInterval(getTradeHistory, 1000 * engineTick * 2);
+
+// cancels order for given order id
+function cancelOrder(order) {
+  log("Cancelling order: " + order + "...");
+  kraken.api(
+    "CancelOrder",
+    {
+      txid: order,
+    },
+    function (error) {
+      if (error) {
+        log("Error cancelling order: " + error);
+      }
+    }
+  );
+}
 
 function getTradeHistory() {
   kraken.api("TradesHistory", null, function (error, tradesHistoryData) {
@@ -674,10 +685,10 @@ function getTradeBalance() {
   );
 }
 
-// buy for a given price with built in timer
-function buy(pair, volume, price, timer) {
-  if (volume * price > 0) {
-    log("Adding order: buy " + volume + " " + pair + " @ " + price + "...");
+// buy for a given price 
+function buy(pair, volume) {
+  if (volume > 0) {
+    log("Adding order: buy " + volume + " " + pair + " @ market...");
 
     return kraken.api(
       "AddOrder",
@@ -685,9 +696,7 @@ function buy(pair, volume, price, timer) {
         pair: pair,
         type: "buy",
         ordertype: "market", // NOTE we are market buying effectively ignoring price
-        volume: volume,
-        price: price,
-        expiretm: "+" + timer,
+        volume: volume
       },
       function (error, buydata) {
         if (error) {
@@ -704,7 +713,12 @@ function buy(pair, volume, price, timer) {
 }
 
 // sell order
-function sell(pair, volume, price) {
+function sell(type, pair, volume, price) {
+  if (type != "limit" && type != "stop-loss") {
+    log("Invalid sell order type.");
+    return;
+  }
+
   if (volume * price > 0) {
     log("Adding order: sell " + volume + " " + pair + " @ " + price + "...");
 
@@ -713,13 +727,13 @@ function sell(pair, volume, price) {
       {
         pair: pair,
         type: "sell",
-        ordertype: "limit",
+        ordertype: type,
         volume: volume,
         price: price,
       },
       function (error, selldata) {
         if (error) {
-          console.error(pair,volume,price,"Error adding sell order",error.message);
+          console.error(pair, volume, price, "Error adding sell order", error.message);
           return;
         }
 
