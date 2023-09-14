@@ -1,5 +1,5 @@
-// TODO: make currency pair configurable
-// TODO: make minBTC and maxBTC price configurable
+// TODO: make currency pair configurable?
+// TODO: make minBTC and maxBTC price for shareofwallet configurable
 
 // logging including date/time
 let log = require("./log.js");
@@ -369,7 +369,7 @@ function getTicker() {
           "/hi:" +
           dayhi +
           " vol(EUR): " +
-          tradevolume.toFixed(2);
+          tradevolume;
 
         // check if we have hard set to skip trading
         if (!IS_TRADING) {
@@ -394,7 +394,7 @@ function getTicker() {
           "distancefromlow",
           distancefromlow,
           "tradevolume",
-          tradevolume.toFixed(2)
+          tradevolume
         );
 
         // determine if we want to buy

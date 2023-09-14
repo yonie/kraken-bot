@@ -5,11 +5,7 @@ launch.json
 .eslintrc.json
 .vscode
 
-
 # default Node gitignore follows
-
-
-
 
 # Logs
 logs

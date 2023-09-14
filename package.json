@@ -10,14 +10,6 @@
     "trade"
   ],
   "license": "GPL-3.0",
-  "files": [
-    "server.js",
-    "settings.js.example",
-    "assetpairs.js",
-    "balance.js",
-    "orders.js",
-    "trades.js"
-  ],
   "dependencies": {
     "dnscache": "^1.0.2",
     "kraken-api": "latest"
