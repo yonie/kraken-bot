@@ -1,26 +1,20 @@
-// set kraken API keys
-exports.krakenkey = '[your kraken api key]';
-exports.krakenpasscode = '[your kraken api passcode]';
+// move limit determines at what point an asset becomes an interesting trade
+exports.buyMoveLimit = 15; 
 
 // tolerance determines how much % near hi or low the lasttrade needs to be to begin acting
-exports.buyTolerance = 30;
-exports.sellTolerance = 30;
+exports.buyTolerance = 25;
 
-// how much above or below last price should the price be
-exports.priceMod = 0.0001;
+// stopLossMode will start putting stop loss orders beneath all current prices -3%
+// those orders will be refreshed if prices go up further
+// it will also not buy anything in this mode
+// to be used when market is percieved as topping out, until market has corrected
+exports.stopLossMode = false;
 
-// move limit determines at what point an asset becomes an interesting trade
-exports.moveLimit = 5;
+// how much to buy each trade (in eur)
+exports.fixedBuyAmount = 30;
 
-// caution prevents too big transactions at once
-exports.caution = 0.1;
+// maximum % each asset can take up of total balance
+exports.maxSharePerAssetPercent = 2.5;
 
-// determine the minimum amount to trade (this prevents API errors)
-exports.minTrade = 0.01;
-exports.minTradeAmount = 0.01;
-
-// max time an order may exist before cleanup
-exports.maxAgeSeconds = 60*60*24;
-
-// how long (seconds) should timed orders remain
-exports.timer = 3600;
+// minimum trade volume we want to see before considering to buy (in eur)
+exports.minTradeVolume = 10000;
