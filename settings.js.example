@@ -1,19 +1,17 @@
-// move limit determines at what point an asset becomes an interesting trade
-exports.buyMoveLimit = 15; 
+// determines at what point an asset becomes an interesting trade
+exports.percentageDrop = 15;
 
-// tolerance determines how much % near hi or low the lasttrade needs to be to begin acting
-exports.buyTolerance = 25;
-
-// stopLossMode will start putting stop loss orders beneath all current prices -3%
+// stopLossMode will start putting stop loss orders beneath all current prices 
 // those orders will be refreshed if prices go up further
 // it will also not buy anything in this mode
 // to be used when market is percieved as topping out, until market has corrected
-exports.stopLossMode = false;
+exports.stopLossMode = true;
+exports.stopLossPercentage = 3;
 
 // how much to buy each trade (in eur)
 exports.fixedBuyAmount = 30;
 
-// maximum % each asset can take up of total balance
+// maximum % each asset can take up of total balance before we stop buying
 exports.maxSharePerAssetPercent = 2.5;
 
 // minimum trade volume we want to see before considering to buy (in eur)

@@ -1,5 +1,7 @@
 // TODO: make currency pair configurable?
 // TODO: make minBTC and maxBTC price for shareofwallet configurable
+// TODO: make webserver an option
+// TODO: get rid of settings.example
 
 // logging including date/time
 let log = require("./log.js");
@@ -21,8 +23,9 @@ const krakenPasscode = secrets.krakenpasscode;
 
 // get the settings
 let settings = require("./settings.js");
-let percentageDrop = settings.percentageDrop;
+const percentageDrop = settings.percentageDrop;
 const stopLossMode = settings.stopLossMode;
+const stopLossPercentage = settings.stopLossPercentage;
 const minTradeVolume = settings.minTradeVolume;
 const maxSharePerAssetPercent = settings.maxSharePerAssetPercent;
 const fixedBuyAmount = settings.fixedBuyAmount;
@@ -31,9 +34,11 @@ const fixedBuyAmount = settings.fixedBuyAmount;
 let ORDERS_DIRTY = true;
 
 // how often does the engine refresh data, in seconds
+// note anything lower than about 30 will get you into API rate limiting
 const ENGINE_TICK = 31;
 
 // minimum trade amount before trying a sell order (in eur)
+// note values lower than 10 can lead to API errors from Kraken
 const MIN_SELL_AMOUNT = 10;
 
 // set to false to disable any trading actions, rendering the bot passive 
@@ -42,7 +47,8 @@ const IS_TRADING = true;
 // how many trades to show in the history list of the web client
 const NUM_HISTORY = 150;
 
-// tolerance determines how much % near low the lasttrade needs to be to begin acting
+// determines how much % near low the lasttrade needs to be to consider buying
+// eg. set to 0 to only buy assets that are at their lowest observed point 
 const BUY_TOLERANCE = 25;
 
 // set up kraken api
@@ -61,9 +67,11 @@ server.on("listening", function () {
 
 let balance;
 
+// internal web server, can be used for inspection of operation
 server.on("request", (request, response) => {
   var contenttype;
 
+  // json array of wallet data
   if (request.url.includes("/wallet")) {
     contenttype = "application/json";
     response.writeHead(200, {
@@ -74,6 +82,7 @@ server.on("request", (request, response) => {
     return;
   }
 
+  // endpoint for external value trackers
   if (request.url.includes("/balance/btc")) {
     contenttype = "application/json";
     response.writeHead(200, {
@@ -87,6 +96,7 @@ server.on("request", (request, response) => {
     return;
   }
 
+  // endpoint for external value trackers
   if (request.url.includes("/balance/eur")) {
     contenttype = "application/json";
     response.writeHead(200, {
@@ -99,6 +109,7 @@ server.on("request", (request, response) => {
     return;
   }
 
+  // json array of known trade history
   if (request.url.includes("/trades")) {
     contenttype = "application/json";
     response.writeHead(200, {
@@ -109,6 +120,7 @@ server.on("request", (request, response) => {
     return;
   }
 
+  // json array of current orders
   if (request.url.includes("/orders")) {
     contenttype = "application/json";
     response.writeHead(200, {
@@ -119,6 +131,7 @@ server.on("request", (request, response) => {
     return;
   }
 
+  // custom formatted price information
   if (request.url.includes("/ticker")) {
     contenttype = "application/json";
     response.writeHead(200, {
@@ -138,14 +151,9 @@ server.on("request", (request, response) => {
   );
   response.write("<h1><a href=\"/\">kraken</a></h1>");
   if (balance && wallet["ZEUR"] && wallet["ZEUR"].value)
-    response.write(
-      "<h2>latest balance: " +
-      balance +
-      " (" +
-      ((wallet["ZEUR"].value / balance) * 100).toFixed(0) +
-      "% free)</h2>"
-    );
+    response.write("<h2>latest balance: " + balance + " (" + ((wallet["ZEUR"].value / balance) * 100).toFixed(0) + "% free)</h2>");
 
+  // try to show btc value next to eur value
   if (balance && ticker && ticker["XXBTZEUR"])
     response.write(
       `<h3>${(
@@ -161,6 +169,7 @@ server.on("request", (request, response) => {
     );
   response.write('<a href="/ticker">ticker</a><br/>');
 
+  // we support selecting a single assets to see data for eg. ?pair=btceur
   let requestedPair = url.parse(request.url, true).query["pair"];
   if (requestedPair)
     response.write(
@@ -176,6 +185,7 @@ server.on("request", (request, response) => {
     response.write("<ul>");
     for (let i = 0; i < Math.min(trades.length, NUM_HISTORY); i++) {
       if (!trades[i]) continue;
+      // filter for desired pair if provided
       if (!requestedPair || trades[i]["pair"] === requestedPair) {
         response.write("<li>");
         response.write(
@@ -203,6 +213,7 @@ server.on("request", (request, response) => {
     response.write("<ul>");
     for (let i = 0; i < orders.length; i++) {
       if (!orders[i]) continue;
+      // filter for desired pair if provided
       if (!requestedPair || orders[i].descr.pair === requestedPair) {
         response.write("<li>");
         response.write(
@@ -225,6 +236,7 @@ server.on("request", (request, response) => {
     response.write("</ul>");
   }
 
+  // basic history showing recent balance changes over time
   if (balanceHistory) {
     for (let i in balanceHistory) {
       response.write("<p>" + i + " " + balanceHistory[i] + "</p>");
@@ -307,13 +319,13 @@ function getTicker() {
     },
     function (error, tickerdata) {
       if (error) {
-        console.error(error);
-        return;
+        console.error("Critical error fetching ticker data:", error);
+        process.exit(1);
       }
 
       ticker = {};
 
-      // loop through the pairs
+      // loop through the pairs in a random order
       shuffleArray(pairs);
       pairs.forEach(function (pair) {
         // TODO: this only works for ZEUR now and it breaks on XTZEUR :)
@@ -331,7 +343,7 @@ function getTicker() {
           pair,
           parseFloat(tickerdata.result[pair].l[1])
         );
-        var tradevolume = parseFloat(tickerdata.result[pair].v[1] * lasttrade);
+        var tradevolume = parseInt(tickerdata.result[pair].v[1] * lasttrade);
         var dayhi = trimToPrecision(
           pair,
           parseFloat(tickerdata.result[pair].h[1])
@@ -386,16 +398,16 @@ function getTicker() {
           return;
         }
 
-        console.info(
-          "considering pair",
-          pair,
-          "move",
-          move,
-          "distancefromlow",
-          distancefromlow,
-          "tradevolume",
-          tradevolume
-        );
+        // console.info(
+        //   "considering pair",
+        //   pair,
+        //   "move",
+        //   move,
+        //   "distancefromlow",
+        //   distancefromlow,
+        //   "tradevolume",
+        //   tradevolume
+        // );
 
         // determine if we want to buy
         if (!stopLossMode && move >= percentageDrop && distancefromlow <= BUY_TOLERANCE) {
@@ -460,8 +472,8 @@ function getTicker() {
 
           // check open orders to see if a sell order is even still possible
           const openSellOrderVolume = getSellOrderVolume(pair);
-          const notForSale = wallet[asset]["amount"] - openSellOrderVolume;
-          if (notForSale * lasttrade > fixedBuyAmount / 2) console.info("Found asset somehow not for sale:", pair, notForSale, notForSale * lasttrade)
+          const notYetForSale = wallet[asset]["amount"] - openSellOrderVolume;
+          if (notYetForSale * lasttrade > MIN_SELL_AMOUNT) console.info("Found asset somehow not yet for sale:", pair, notYetForSale, notYetForSale * lasttrade)
 
           const walletAmount = wallet[asset].amount;
 
@@ -472,7 +484,7 @@ function getTicker() {
           if (sellVolume * sellPrice > MIN_SELL_AMOUNT) {
 
             if (!stopLossMode) sell("limit", pair, sellVolume, sellPrice);
-            if (stopLossMode) sell("stop-loss", pair, sellVolume, lasttrade * 0.97)
+            if (stopLossMode) sell("stop-loss", pair, sellVolume, trimToPrecision(pair, lasttrade * ((100 - stopLossPercentage) / 100)));
 
             // make the order book "dirty" again otherwise we keep ordering until next update
             ORDERS_DIRTY = true;
@@ -552,21 +564,30 @@ function updateOpenOrders() {
       orders.push(openOrders.result.open[order]);
 
       // get the order information
-      var orderBuySell = openOrders.result.open[order].descr.type;
-      var orderLimitMarket = openOrders.result.open[order].descr.ordertype;
-      var orderPrice = openOrders.result.open[order].descr.price;
-      var orderPair = openOrders.result.open[order].descr.pair;
-
-      var currentPrice = (ticker && ticker[orderPair]) ? ticker[orderPair].split(" ")[0] : null;
+      const orderBuySell = openOrders.result.open[order].descr.type;
+      const orderLimitMarket = openOrders.result.open[order].descr.ordertype;
+      const currentOrderPrice = openOrders.result.open[order].descr.price;
+      const orderPair = openOrders.result.open[order].descr.pair;
+      const lastTradePrice = (ticker && ticker[orderPair]) ? ticker[orderPair].split(" ")[0] : null;
 
       // if we are in stoploss mode, cancel all limit sell orders
-      if (stopLossMode && orderBuySell == "sell" && orderLimitMarket == "limit") cancelOrder(order);
+      if (stopLossMode && orderBuySell == "sell" && orderLimitMarket == "limit") {
+        log("Cancelling order as we are in stoploss mode: " + order);
+        cancelOrder(order);
+      }
 
       // in normal mode, cancel orders that are too far out
-      if (!stopLossMode && orderBuySell == "sell" && orderLimitMarket == "limit" && currentPrice && orderPrice > currentPrice * 10) cancelOrder(order)
+      if (!stopLossMode && orderBuySell == "sell" && orderLimitMarket == "limit" && lastTradePrice && currentOrderPrice > lastTradePrice * 10) {
+        log("Cancelling order because it has become unattainable: " + order);
+        cancelOrder(order);
+      }
 
       // in stop loss mode, if we have a stop loss order that we should replan, cancel it so a new one can be made
-      if (stopLossMode && orderBuySell == "sell" && orderLimitMarket == "stop-loss" && currentPrice && orderPrice < currentPrice * 0.97) cancelOrder(order);
+      const desiredStopLossPrice = lastTradePrice ? trimToPrecision(orderPair, lastTradePrice * ((100 - stopLossPercentage) / 100)) : null;
+      if (stopLossMode && orderBuySell == "sell" && orderLimitMarket == "stop-loss" && desiredStopLossPrice && currentOrderPrice < desiredStopLossPrice) {
+        log("Cancelling stop loss order so it can be resent with better price: " + order);
+        cancelOrder(order);
+      }
     }
 
     ORDERS_DIRTY = false;
