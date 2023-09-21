@@ -171,7 +171,7 @@ server.on("request", (request, response) => {
   response.write('<a href="/trades">trades</a><br/>');
   if (orders)
     response.write(
-      '<a href="/orders">orders (' + orders.length + ")</a><br/>"
+      '<a href="/orders">orders (' + Object.keys(orders).length + ")</a><br/>"
     );
   response.write('<a href="/ticker">ticker</a><br/>');
 
@@ -217,28 +217,28 @@ server.on("request", (request, response) => {
   if (orders) {
     response.write("<p>latest orders:</p>");
     response.write("<ul>");
-    for (let i = 0; i < orders.length; i++) {
-      if (!orders[i]) continue;
+    Object.keys(orders).forEach(function(orderId) {
+      const order = orders[orderId];
       // filter for desired pair if provided
-      if (!requestedPair || orders[i].descr.pair === requestedPair) {
+      if (!requestedPair || order.descr.pair === requestedPair) {
         response.write("<li>");
         response.write(
-          "" + new Date(orders[i].opentm * 1000).toLocaleString('nl-NL')
+          "" + new Date(order.opentm * 1000).toLocaleString('nl-NL')
         );
         response.write(" ");
-        response.write(orders[i].descr.type);
+        response.write(order.descr.type);
         response.write(" ");
-        response.write(orders[i].vol);
-        response.write(' <a href="?pair=' + orders[i].descr.pair + '">');
-        response.write(orders[i].descr.pair);
+        response.write(order.vol);
+        response.write(' <a href="?pair=' + order.descr.pair + '">');
+        response.write(order.descr.pair);
         response.write("</a> ");
         response.write(" @ ");
-        response.write(orders[i].descr.price);
+        response.write(order.descr.price);
         response.write(" = ");
-        response.write("" + orders[i].descr.price * orders[i].vol);
+        response.write("" + order.descr.price * order.vol);
         response.write("</li>");
       }
-    }
+    })
     response.write("</ul>");
   }
 
