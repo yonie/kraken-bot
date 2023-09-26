@@ -12,6 +12,7 @@
   "license": "GPL-3.0",
   "dependencies": {
     "dnscache": "^1.0.2",
+    "dotenv": "^16.3.1",
     "kraken-api": "latest"
   },
   "engines": {

@@ -1,3 +1,5 @@
+// @ts-check
+
 // TODO: make currency pair configurable?
 // TODO: make minBTC and maxBTC price for shareofwallet configurable
 // TODO: make webserver an option
@@ -12,9 +14,9 @@ log("initializing..");
 let dns = require("dns"), dnscache = require("dnscache")({ enable: true, ttl: 1800, cachesize: 1000 });
 
 // get the secrets
-let secrets = require("./.env");
-const krakenKey = secrets.krakenkey;
-const krakenPasscode = secrets.krakenpasscode;
+require('dotenv').config();
+const krakenKey = process.env.KRAKEN_KEY;
+const krakenPasscode = process.env.KRAKEN_PASSCODE;
 
 // get the settings
 let settings = require("./settings.js");
@@ -72,7 +74,7 @@ server.on("request", (request, response) => {
   var contenttype;
 
   // json array of wallet data
-  if (request.url.includes("/wallet")) {
+  if (request.url?.includes("/wallet")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
@@ -83,7 +85,7 @@ server.on("request", (request, response) => {
   }
 
   // endpoint for external value trackers
-  if (request.url.includes("/balance/btc")) {
+  if (request.url?.includes("/balance/btc")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
@@ -97,7 +99,7 @@ server.on("request", (request, response) => {
   }
 
   // endpoint for external value trackers
-  if (request.url.includes("/balance/eur")) {
+  if (request.url?.includes("/balance/eur")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
@@ -110,7 +112,7 @@ server.on("request", (request, response) => {
   }
 
   // json array of known trade history
-  if (request.url.includes("/trades")) {
+  if (request.url?.includes("/trades")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
@@ -121,7 +123,7 @@ server.on("request", (request, response) => {
   }
 
   // json array of current orders
-  if (request.url.includes("/orders")) {
+  if (request.url?.includes("/orders")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
@@ -132,7 +134,7 @@ server.on("request", (request, response) => {
   }
 
   // custom formatted price information
-  if (request.url.includes("/ticker")) {
+  if (request.url?.includes("/ticker")) {
     contenttype = "application/json";
     response.writeHead(200, {
       "Content-Type": contenttype,
@@ -170,7 +172,7 @@ server.on("request", (request, response) => {
   response.write('<a href="/ticker">ticker</a><br/>');
 
   // we support selecting a single assets to see data for eg. ?pair=btceur
-  let requestedPair = getPrimaryNameForAsset(url.parse(request.url, true).query["pair"]);
+  let requestedPair = request.url ? getPrimaryNameForAsset(url.parse(request.url, true).query["pair"]) : null;
   if (requestedPair)
     response.write(
       "<h3>" +
@@ -312,7 +314,7 @@ function getTicker() {
           pair,
           parseFloat(tickerdata.result[pair].l[1])
         );
-        var tradevolume = parseInt(tickerdata.result[pair].v[1] * lasttrade);
+        var tradevolume = Math.round(tickerdata.result[pair].v[1] * lasttrade);
         var dayhi = trimToPrecision(
           pair,
           parseFloat(tickerdata.result[pair].h[1])
@@ -399,17 +401,17 @@ function getTicker() {
             let buyVolume = (fixedBuyAmount / buyPrice)
 
             // clean up if we can
-            if (pairs[pair].lot_decimals) buyVolume = buyVolume.toFixed(pairs[pair].lot_decimals);
+            if (pairs[pair].lot_decimals) buyVolume = Number(buyVolume.toFixed(pairs[pair].lot_decimals));
 
             // make sure the minimum order size works with the API
             if (pairs[pair].ordermin) buyVolume = Math.max(buyVolume, pairs[pair].ordermin);
 
             // if we have too much of one asset (including orders!), don't buy more
-            var buyOrderValue = sumOpenBuyOrderValue(pair);
-            var ownedAssetValue =
+            const buyOrderValue = sumOpenBuyOrderValue(pair);
+            const ownedAssetValue =
               wallet && wallet[asset] && wallet[asset].value ? wallet[asset]["value"] : 0;
 
-            if ((buyVolume * buyPrice) + buyOrderValue + ownedAssetValue < (maxSharePerAssetPercent / 100) * balance) {
+            if ((buyVolume * buyPrice) + (buyOrderValue ?? 0) + ownedAssetValue < (maxSharePerAssetPercent / 100) * balance) {
 
               // buy stuff
               buy(pair, buyVolume);
@@ -438,16 +440,16 @@ function getTicker() {
 
           // check open orders to see if a sell order is even still possible
           const openSellOrderVolume = getSellOrderVolume(pair);
-          const notYetForSale = wallet[asset]["amount"] - openSellOrderVolume;
+          const notYetForSale = wallet[asset]["amount"] - (openSellOrderVolume ?? 0);
           if (notYetForSale * lasttrade > MIN_SELL_AMOUNT) console.info("Found asset somehow not yet for sale:", pair, notYetForSale, notYetForSale * lasttrade)
 
           const walletAmount = wallet[asset].amount;
 
           // sell volume is what remains decucing open orders from the held amount
-          let sellVolume = (walletAmount - openSellOrderVolume);
+          let sellVolume = (walletAmount - (openSellOrderVolume ?? 0));
 
           // clean up if we can
-          if (pairs[pair].lot_decimals) sellVolume = sellVolume.toFixed(pairs[pair].lot_decimals);
+          if (pairs[pair].lot_decimals) sellVolume = Number(sellVolume.toFixed(pairs[pair].lot_decimals));
 
           // don't trade if have too little to sell
           if (sellVolume * sellPrice > MIN_SELL_AMOUNT) {
@@ -505,7 +507,7 @@ function getSellOrderVolume(pair) {
   return sum;
 }
 
-var orders = [];
+let orders = {};
 
 setInterval(updateOpenOrders, (1000 * ENGINE_TICK) / 2);
 
@@ -535,7 +537,7 @@ function updateOpenOrders() {
       const orderLimitMarket = openOrders.result.open[order].descr.ordertype;
       const currentOrderPrice = openOrders.result.open[order].descr.price;
       const orderPair = getPrimaryNameForAsset(openOrders.result.open[order].descr.pair);
-      const lastTradePrice = (ticker && ticker[orderPair]) ? ticker[orderPair].split(" ")[0] : null;
+      const lastTradePrice = (ticker && orderPair && ticker[orderPair]) ? ticker[orderPair].split(" ")[0] : null;
 
       // in stoploss mode, cancel all existing limit sell orders so they can be replaced
       if (stopLossModeEnabled && orderBuySell == "sell" && orderLimitMarket == "limit") {
