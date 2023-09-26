@@ -9,13 +9,7 @@ let log = require("./log.js");
 log("initializing..");
 
 // eslint-disable-next-line no-unused-vars
-let dns = require("dns"),
-  // eslint-disable-next-line no-unused-vars
-  dnscache = require("dnscache")({
-    enable: true,
-    ttl: 1800,
-    cachesize: 1000,
-  });
+let dns = require("dns"), dnscache = require("dnscache")({ enable: true, ttl: 1800, cachesize: 1000 });
 
 // get the secrets
 let secrets = require("./.env");
@@ -567,11 +561,12 @@ function updateOpenOrders() {
   });
 }
 
+// returns the primary name for an asset if an altname is provided
 function getPrimaryNameForAsset(altname) {
   let found = null;
   if (!altname || !pairs) return null;
   Object.keys(pairs).forEach(function (pair) {
-    if (pairs[pair].altname == altname) {
+    if (pairs[pair].altname == altname || pair == altname) {
       found = pair;
     }
   })
