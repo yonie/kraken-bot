@@ -176,7 +176,7 @@ server.on("request", (request, response) => {
   response.write('<a href="/ticker">ticker</a><br/>');
 
   // we support selecting a single assets to see data for eg. ?pair=btceur
-  let requestedPair = url.parse(request.url, true).query["pair"];
+  let requestedPair = getPrimaryNameForAsset(url.parse(request.url, true).query["pair"]);
   if (requestedPair)
     response.write(
       "<h3>" +
@@ -192,7 +192,7 @@ server.on("request", (request, response) => {
     for (let i = 0; i < Math.min(trades.length, NUM_TRADE_HISTORY); i++) {
       if (!trades[i]) continue;
       // filter for desired pair if provided
-      if (!requestedPair || trades[i]["pair"] === requestedPair) {
+      if (!requestedPair || trades[i].pair === requestedPair || trades[i].pair == pairs[requestedPair]?.altname) {
         response.write("<li>");
         response.write(
           "" + new Date(trades[i]["time"] * 1000).toLocaleString('nl-NL')
@@ -220,7 +220,7 @@ server.on("request", (request, response) => {
     Object.keys(orders).forEach(function(orderId) {
       const order = orders[orderId];
       // filter for desired pair if provided
-      if (!requestedPair || order.descr.pair === requestedPair) {
+      if (!requestedPair || order.descr.pair === requestedPair || order.descr.pair === pairs[requestedPair]?.altname) {
         response.write("<li>");
         response.write(
           "" + new Date(order.opentm * 1000).toLocaleString('nl-NL')
@@ -542,7 +542,6 @@ function updateOpenOrders() {
       const currentOrderPrice = openOrders.result.open[order].descr.price;
       const orderPair = getPrimaryNameForAsset(openOrders.result.open[order].descr.pair);
       const lastTradePrice = (ticker && ticker[orderPair]) ? ticker[orderPair].split(" ")[0] : null;
-      const desiredStopLossPrice = lastTradePrice ? trimToPrecision(orderPair, lastTradePrice * ((100 - stopLossPercentage) / 100)) : null;
 
       // in stoploss mode, cancel all existing limit sell orders so they can be replaced
       if (stopLossModeEnabled && orderBuySell == "sell" && orderLimitMarket == "limit") {
@@ -557,7 +556,8 @@ function updateOpenOrders() {
       }
 
       // in stop loss mode, if we have a stop loss order that we should replan, cancel it so a new one can be made
-      if (stopLossModeEnabled && orderBuySell == "sell" && orderLimitMarket == "stop-loss" && desiredStopLossPrice && currentOrderPrice < desiredStopLossPrice) {
+      const desiredStopLossPrice = lastTradePrice ? trimToPrecision(orderPair, lastTradePrice * ((100 - stopLossPercentage) / 100)) : null;
+      if (orderBuySell == "sell" && orderLimitMarket == "stop-loss" && desiredStopLossPrice && currentOrderPrice < desiredStopLossPrice) {
         log("Editing stop loss order with new price: " + order);
         editOrder(order, orderPair, desiredStopLossPrice);
       }
