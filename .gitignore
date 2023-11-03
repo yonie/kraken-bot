@@ -4,6 +4,7 @@ package-lock.json
 launch.json
 .eslintrc.json
 .vscode
+.prettierrc
 
 # default Node gitignore follows
 
