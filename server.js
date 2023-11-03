@@ -22,21 +22,21 @@ const krakenPasscode = process.env.KRAKEN_PASSCODE;
 // get the settings
 let settings = require("./settings.js");
 const percentageDrop = settings.percentageDrop;
-let stopLossModeEnabled = settings.stopLossModeEnabled;
 const stopLossPercentage = settings.stopLossPercentage;
 const minTradeVolume = settings.minTradeVolume;
 const maxSharePerAssetPercent = settings.maxSharePerAssetPercent;
 const fixedBuyAmount = settings.fixedBuyAmount;
+const maxGreedPercentage = settings.maxGreedPercentage;
 
 if (
   !percentageDrop ||
-  stopLossModeEnabled == undefined ||
   !stopLossPercentage ||
   !minTradeVolume ||
   !maxSharePerAssetPercent ||
-  !fixedBuyAmount
+  !fixedBuyAmount ||
+  !maxGreedPercentage
 ) {
-  console.error("Critical error: missing settings.js file.");
+  console.error("Critical error: missing (part of) settings.js file.");
   process.exit(1);
 }
 
@@ -58,14 +58,14 @@ const NUM_TRADE_HISTORY = 150;
 // eg. set to 0 to only buy assets that are at their lowest observed point
 const BUY_TOLERANCE = 20;
 
-// the maximum amount of greed we allow before we enabled stop loss mode
-const MAX_GREED_VALUE = 70;
-
 // the maximum amount an asset can crash before we begin to ignore it
 const MAX_DROP = 40;
 
+// internally used to check if we are in stoploss mode
+let STOP_LOSS_MODE = false;
+
 // internal flag used to keep the engine aware whether orders have been updated
-let ordersDirty = true;
+let ORDERS_DIRTY = true;
 
 // set up kraken api
 let KrakenClient = require("kraken-api");
@@ -394,11 +394,11 @@ function getTicker() {
         if (!tradeBalance) return;
 
         // make sure we have order info before we start trading
-        if (ordersDirty) return;
+        if (ORDERS_DIRTY) return;
 
         // check if we want to buy
         if (
-          !stopLossModeEnabled &&
+          !STOP_LOSS_MODE &&
           move >= percentageDrop &&
           move < MAX_DROP &&
           distancefromlow <= BUY_TOLERANCE
@@ -459,7 +459,7 @@ function considerBuy(pair, tradevolume, lasttrade, asset) {
       buy(pair, buyVolume);
 
       // make the order book "dirty" again (otherwise we keep ordering until next order book update)
-      ordersDirty = true;
+      ORDERS_DIRTY = true;
       setTimeout(updateOpenOrders, 5000);
     }
   }
@@ -524,8 +524,8 @@ function considerSell(move, lasttrade, pair, asset) {
 
   // don't trade if have too little to sell
   if (sellVolume * sellPrice > MIN_SELL_AMOUNT) {
-    if (!stopLossModeEnabled) sell("limit", pair, sellVolume, sellPrice);
-    if (stopLossModeEnabled)
+    if (!STOP_LOSS_MODE) sell("limit", pair, sellVolume, sellPrice);
+    if (STOP_LOSS_MODE)
       sell(
         "stop-loss",
         pair,
@@ -591,7 +591,7 @@ function updateOpenOrders() {
 
     if (error) {
       console.error("Error fetching open orders: ", error);
-      ordersDirty = true;
+      ORDERS_DIRTY = true;
       return;
     }
 
@@ -617,7 +617,7 @@ function updateOpenOrders() {
 
       // in stoploss mode, cancel all existing limit sell orders so they can be replaced
       if (
-        stopLossModeEnabled &&
+        STOP_LOSS_MODE &&
         orderBuySell == "sell" &&
         orderLimitMarket == "limit"
       ) {
@@ -627,7 +627,7 @@ function updateOpenOrders() {
 
       // in normal mode, cancel limit orders that are too far out so they can be resent
       if (
-        !stopLossModeEnabled &&
+        !STOP_LOSS_MODE &&
         orderBuySell == "sell" &&
         orderLimitMarket == "limit" &&
         lastTradePrice &&
@@ -667,7 +667,7 @@ function updateOpenOrders() {
       }
     }
 
-    ordersDirty = false;
+    ORDERS_DIRTY = false;
   });
 }
 
@@ -783,9 +783,9 @@ function getGreedStatistics() {
           );
 
           // if greed is too high, we should exit positions
-          stopLossModeEnabled = greedValue >= MAX_GREED_VALUE;
+          STOP_LOSS_MODE = greedValue >= maxGreedPercentage;
 
-          if (stopLossModeEnabled)
+          if (STOP_LOSS_MODE)
             console.warn(
               "Warning: Stop loss mode active due to high detected greed!"
             );
