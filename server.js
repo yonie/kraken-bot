@@ -11,10 +11,11 @@ let log = require("./log.js");
 log("initializing..");
 
 // eslint-disable-next-line no-unused-vars
-let dns = require("dns"), dnscache = require("dnscache")({ enable: true, ttl: 1800, cachesize: 1000 });
+let dns = require("dns"),
+  dnscache = require("dnscache")({ enable: true, ttl: 1800, cachesize: 1000 });
 
 // get the secrets
-require('dotenv').config();
+require("dotenv").config();
 const krakenKey = process.env.KRAKEN_KEY;
 const krakenPasscode = process.env.KRAKEN_PASSCODE;
 
@@ -27,7 +28,14 @@ const minTradeVolume = settings.minTradeVolume;
 const maxSharePerAssetPercent = settings.maxSharePerAssetPercent;
 const fixedBuyAmount = settings.fixedBuyAmount;
 
-if (!percentageDrop || stopLossModeEnabled == undefined || !stopLossPercentage || !minTradeVolume || !maxSharePerAssetPercent || !fixedBuyAmount) {
+if (
+  !percentageDrop ||
+  stopLossModeEnabled == undefined ||
+  !stopLossPercentage ||
+  !minTradeVolume ||
+  !maxSharePerAssetPercent ||
+  !fixedBuyAmount
+) {
   console.error("Critical error: missing settings.js file.");
   process.exit(1);
 }
@@ -40,14 +48,14 @@ const ENGINE_TICK = 31;
 // note values lower than 10 can lead to API errors from Kraken
 const MIN_SELL_AMOUNT = 10;
 
-// set to false to disable any trading actions, rendering the bot passive 
+// set to false to disable any trading actions, rendering the bot passive
 const TRADING_ENABLED = true;
 
 // how many trades to show in the history list of the web client
 const NUM_TRADE_HISTORY = 150;
 
 // determines how much % near low the lasttrade needs to be to consider buying
-// eg. set to 0 to only buy assets that are at their lowest observed point 
+// eg. set to 0 to only buy assets that are at their lowest observed point
 const BUY_TOLERANCE = 20;
 
 // the maximum amount of greed we allow before we enabled stop loss mode
@@ -160,9 +168,15 @@ server.on("request", (request, response) => {
   response.write(
     "<!doctype HTML><html><head><title>kraken</title></head><body>"
   );
-  response.write("<h1><a href=\"/\">kraken</a></h1>");
+  response.write('<h1><a href="/">kraken</a></h1>');
   if (tradeBalance && wallet["ZEUR"] && wallet["ZEUR"].value)
-    response.write("<h2>latest balance: " + tradeBalance + " (" + ((wallet["ZEUR"].value / tradeBalance) * 100).toFixed(0) + "% free)</h2>");
+    response.write(
+      "<h2>latest balance: " +
+        tradeBalance +
+        " (" +
+        ((wallet["ZEUR"].value / tradeBalance) * 100).toFixed(0) +
+        "% free)</h2>"
+    );
 
   // try to show btc value next to eur value
   if (tradeBalance && ticker && ticker["XXBTZEUR"])
@@ -181,14 +195,16 @@ server.on("request", (request, response) => {
   response.write('<a href="/ticker">ticker</a><br/>');
 
   // we support selecting a single assets to see data for eg. ?pair=btceur
-  let requestedPair = request.url ? getPrimaryNameForAsset(url.parse(request.url, true).query["pair"]) : null;
+  let requestedPair = request.url
+    ? getPrimaryNameForAsset(url.parse(request.url, true).query["pair"])
+    : null;
   if (requestedPair)
     response.write(
       "<h3>" +
-      requestedPair +
-      ": " +
-      (ticker ? ticker[requestedPair] : "") +
-      "</h3>"
+        requestedPair +
+        ": " +
+        (ticker ? ticker[requestedPair] : "") +
+        "</h3>"
     );
 
   if (trades) {
@@ -197,10 +213,14 @@ server.on("request", (request, response) => {
     for (let i = 0; i < Math.min(trades.length, NUM_TRADE_HISTORY); i++) {
       if (!trades[i]) continue;
       // filter for desired pair if provided
-      if (!requestedPair || trades[i].pair === requestedPair || trades[i].pair == pairs[requestedPair]?.altname) {
+      if (
+        !requestedPair ||
+        trades[i].pair === requestedPair ||
+        trades[i].pair == pairs[requestedPair]?.altname
+      ) {
         response.write("<li>");
         response.write(
-          "" + new Date(trades[i]["time"] * 1000).toLocaleString('nl-NL')
+          "" + new Date(trades[i]["time"] * 1000).toLocaleString("nl-NL")
         );
         response.write(" ");
         response.write(trades[i]["type"]);
@@ -225,10 +245,14 @@ server.on("request", (request, response) => {
     Object.keys(orders).forEach(function (orderId) {
       const order = orders[orderId];
       // filter for desired pair if provided
-      if (!requestedPair || order.descr.pair === requestedPair || order.descr.pair === pairs[requestedPair]?.altname) {
+      if (
+        !requestedPair ||
+        order.descr.pair === requestedPair ||
+        order.descr.pair === pairs[requestedPair]?.altname
+      ) {
         response.write("<li>");
         response.write(
-          "" + new Date(order.opentm * 1000).toLocaleString('nl-NL')
+          "" + new Date(order.opentm * 1000).toLocaleString("nl-NL")
         );
         response.write(" ");
         response.write(order.descr.type);
@@ -243,7 +267,7 @@ server.on("request", (request, response) => {
         response.write("" + order.descr.price * order.vol);
         response.write("</li>");
       }
-    })
+    });
     response.write("</ul>");
   }
 
@@ -255,7 +279,6 @@ server.on("request", (request, response) => {
   }
   response.write("</body></html>");
   response.end();
-
 });
 
 let pairs;
@@ -272,13 +295,16 @@ kraken.api("AssetPairs", null, function (error, pairdata) {
   // push all pairs into an object
   pairs = {};
   for (let assetpair in pairdata["result"]) {
-    if (assetpair.endsWith("EUR")) pairs[assetpair] = pairdata["result"][assetpair];
+    if (assetpair.endsWith("EUR"))
+      pairs[assetpair] = pairdata["result"][assetpair];
   }
 
   // get the exploded variant
   pairsExploded = Object.keys(pairs).join();
 
-  TRADING_ENABLED ? log("trading on " + Object.keys(pairs).length + " pairs.") : log("NOT trading!");
+  TRADING_ENABLED
+    ? log("trading on " + Object.keys(pairs).length + " pairs.")
+    : log("NOT trading!");
 
   // do initial requests
   setTimeout(updateBalance, 1000);
@@ -308,8 +334,7 @@ function getTicker() {
       let balanceSum = 0;
 
       // loop through the pairs in a random order
-      (Object.keys(tickerdata.result)).forEach(function (pair) {
-
+      Object.keys(tickerdata.result).forEach(function (pair) {
         const asset = pairs[pair].base;
 
         // for each pair see if we need to trade
@@ -328,8 +353,8 @@ function getTicker() {
         );
 
         if (!daylow || !dayhi || !lasttrade) {
-          console.error("Missing ticker data.", daylow, dayhi, lasttrade)
-          return
+          console.error("Missing ticker data.", daylow, dayhi, lasttrade);
+          return;
         }
 
         // update wallet
@@ -372,29 +397,31 @@ function getTicker() {
         if (ordersDirty) return;
 
         // check if we want to buy
-        if (!stopLossModeEnabled && move >= percentageDrop && move < MAX_DROP && distancefromlow <= BUY_TOLERANCE)
-          considerBuy(pair, tradevolume, lasttrade, asset)
+        if (
+          !stopLossModeEnabled &&
+          move >= percentageDrop &&
+          move < MAX_DROP &&
+          distancefromlow <= BUY_TOLERANCE
+        )
+          considerBuy(pair, tradevolume, lasttrade, asset);
 
         // check if we want to sell
-        if (wallet && wallet[asset] && wallet[asset]["amount"] > 0) considerSell(move, lasttrade, pair, asset)
-
+        if (wallet && wallet[asset] && wallet[asset]["amount"] > 0)
+          considerSell(move, lasttrade, pair, asset);
       });
 
       // temp hack to keep track of trade balance manually because the api is broken atm
       balanceSum += wallet["ZEUR"].value;
       tradeBalance = balanceSum.toFixed(2);
-
     }
   );
 }
 
 function considerBuy(pair, tradevolume, lasttrade, asset) {
-
   console.debug("Potentially interesting asset:", pair, ticker[pair]);
 
-  const shareOfWallet = getShareOfWallet()
-  console.log(shareOfWallet)
-  if (shareOfWallet == null) return
+  const shareOfWallet = getShareOfWallet();
+  if (shareOfWallet == null) return;
 
   // make sure stable coins don't count toward "share of wallet"
   const stablestuff =
@@ -406,23 +433,28 @@ function considerBuy(pair, tradevolume, lasttrade, asset) {
     wallet["ZEUR"].amount + stablestuff > tradeBalance * shareOfWallet &&
     tradevolume > minTradeVolume
   ) {
-
     let buyPrice = lasttrade;
-    let buyVolume = (fixedBuyAmount / buyPrice)
+    let buyVolume = fixedBuyAmount / buyPrice;
 
     // clean up if we can
-    if (pairs[pair].lot_decimals) buyVolume = Number(buyVolume.toFixed(pairs[pair].lot_decimals));
+    if (pairs[pair].lot_decimals)
+      buyVolume = Number(buyVolume.toFixed(pairs[pair].lot_decimals));
 
     // make sure the minimum order size works with the API
-    if (pairs[pair].ordermin) buyVolume = Math.max(buyVolume, pairs[pair].ordermin);
+    if (pairs[pair].ordermin)
+      buyVolume = Math.max(buyVolume, pairs[pair].ordermin);
 
     // if we have too much of one asset (including orders!), don't buy more
     const buyOrderValue = sumOpenBuyOrderValue(pair);
     const ownedAssetValue =
-      wallet && wallet[asset] && wallet[asset].value ? wallet[asset]["value"] : 0;
+      wallet && wallet[asset] && wallet[asset].value
+        ? wallet[asset]["value"]
+        : 0;
 
-    if ((buyVolume * buyPrice) + (buyOrderValue ?? 0) + ownedAssetValue < (maxSharePerAssetPercent / 100) * tradeBalance) {
-
+    if (
+      buyVolume * buyPrice + (buyOrderValue ?? 0) + ownedAssetValue <
+      (maxSharePerAssetPercent / 100) * tradeBalance
+    ) {
       // buy stuff
       buy(pair, buyVolume);
 
@@ -431,11 +463,9 @@ function considerBuy(pair, tradevolume, lasttrade, asset) {
       setTimeout(updateOpenOrders, 5000);
     }
   }
-
 }
 
 function getShareOfWallet() {
-
   // adjust how much we buy based on btc price
   let btcPrice = ticker["XXBTZEUR"]
     ? parseFloat(ticker["XXBTZEUR"].split(" ")[0])
@@ -443,7 +473,7 @@ function getShareOfWallet() {
 
   // if btc price is unknown we're not proceeding
   if (!btcPrice) {
-    console.warn("BTC price not yet known, aborting potential trade.")
+    console.warn("BTC price not yet known, aborting potential trade.");
     return;
   }
   if (btcPrice < 15000) return 0.19;
@@ -455,7 +485,6 @@ function getShareOfWallet() {
   if (btcPrice < 45000) return 0.86;
 
   return 0.86;
-
 }
 
 function considerSell(move, lasttrade, pair, asset) {
@@ -469,36 +498,46 @@ function considerSell(move, lasttrade, pair, asset) {
   // quick hack for API
   sellPrice = trimToPrecision(pair, sellPrice);
   if (!sellPrice) {
-    console.error("Error calculating sell price.", pair, sellPrice)
-    return
+    console.error("Error calculating sell price.", pair, sellPrice);
+    return;
   }
 
   // check open orders to see if a sell order is even still possible
   const openSellOrderVolume = getSellOrderVolume(pair);
   const notYetForSale = wallet[asset]["amount"] - (openSellOrderVolume ?? 0);
-  if (notYetForSale * lasttrade > MIN_SELL_AMOUNT) console.info("Found asset somehow not yet for sale:", pair, notYetForSale, notYetForSale * lasttrade)
+  if (notYetForSale * lasttrade > MIN_SELL_AMOUNT)
+    console.info(
+      "Found asset somehow not yet for sale:",
+      pair,
+      notYetForSale,
+      notYetForSale * lasttrade
+    );
 
   const walletAmount = wallet[asset].amount;
 
   // sell volume is what remains decucing open orders from the held amount
-  let sellVolume = (walletAmount - (openSellOrderVolume ?? 0));
+  let sellVolume = walletAmount - (openSellOrderVolume ?? 0);
 
   // clean up if we can
-  if (pairs[pair].lot_decimals) sellVolume = Number(sellVolume.toFixed(pairs[pair].lot_decimals));
+  if (pairs[pair].lot_decimals)
+    sellVolume = Number(sellVolume.toFixed(pairs[pair].lot_decimals));
 
   // don't trade if have too little to sell
   if (sellVolume * sellPrice > MIN_SELL_AMOUNT) {
-
     if (!stopLossModeEnabled) sell("limit", pair, sellVolume, sellPrice);
-    if (stopLossModeEnabled) sell("stop-loss", pair, sellVolume, trimToPrecision(pair, lasttrade * ((100 - stopLossPercentage) / 100)));
+    if (stopLossModeEnabled)
+      sell(
+        "stop-loss",
+        pair,
+        sellVolume,
+        trimToPrecision(pair, lasttrade * ((100 - stopLossPercentage) / 100))
+      );
 
     // make the order book "dirty" again otherwise we keep ordering until next update
     //ordersDirty = true;
     setTimeout(updateOpenOrders, 5000);
   }
 }
-
-
 
 // helper function to easily calculate the total amount of open order value for a given pair
 function sumOpenBuyOrderValue(pair) {
@@ -561,7 +600,6 @@ function updateOpenOrders() {
 
     // iterate through all the open orders
     for (var order in openOrders.result.open) {
-
       // fill the orders storage
       orders[order] = openOrders.result.open[order];
 
@@ -569,31 +607,67 @@ function updateOpenOrders() {
       const orderBuySell = openOrders.result.open[order].descr.type;
       const orderLimitMarket = openOrders.result.open[order].descr.ordertype;
       const currentOrderPrice = openOrders.result.open[order].descr.price;
-      const orderPair = getPrimaryNameForAsset(openOrders.result.open[order].descr.pair);
-      const lastTradePrice = (ticker && orderPair && ticker[orderPair]) ? ticker[orderPair].split(" ")[0] : null;
+      const orderPair = getPrimaryNameForAsset(
+        openOrders.result.open[order].descr.pair
+      );
+      const lastTradePrice =
+        ticker && orderPair && ticker[orderPair]
+          ? ticker[orderPair].split(" ")[0]
+          : null;
 
       // in stoploss mode, cancel all existing limit sell orders so they can be replaced
-      if (stopLossModeEnabled && orderBuySell == "sell" && orderLimitMarket == "limit") {
+      if (
+        stopLossModeEnabled &&
+        orderBuySell == "sell" &&
+        orderLimitMarket == "limit"
+      ) {
         log("Cancelling limit order as we are now in stoploss mode: " + order);
         cancelOrder(order);
       }
 
       // in normal mode, cancel limit orders that are too far out so they can be resent
-      if (!stopLossModeEnabled && orderBuySell == "sell" && orderLimitMarket == "limit" && lastTradePrice && currentOrderPrice > lastTradePrice * 10) {
-        log("Cancelling limit order because it has become unattainable: " + order);
+      if (
+        !stopLossModeEnabled &&
+        orderBuySell == "sell" &&
+        orderLimitMarket == "limit" &&
+        lastTradePrice &&
+        currentOrderPrice > lastTradePrice * 10
+      ) {
+        log(
+          "Cancelling limit order because it has become unattainable: " + order
+        );
         cancelOrder(order);
       }
 
       // if we have a stop loss order that we should replan, cancel it so a new one can be made
-      const desiredStopLossPrice = lastTradePrice ? trimToPrecision(orderPair, lastTradePrice * ((100 - stopLossPercentage) / 100)) : null;
-      if (orderBuySell == "sell" && orderLimitMarket == "stop-loss" && desiredStopLossPrice && currentOrderPrice < desiredStopLossPrice) {
-        log("Updating stop loss order with higher price: " + orderPair + " " + currentOrderPrice + " --> " + desiredStopLossPrice + " (+" + ((1 - (desiredStopLossPrice / currentOrderPrice)) * 100).toFixed(1) + "%)");
+      const desiredStopLossPrice = lastTradePrice
+        ? trimToPrecision(
+            orderPair,
+            lastTradePrice * ((100 - stopLossPercentage) / 100)
+          )
+        : null;
+      if (
+        orderBuySell == "sell" &&
+        orderLimitMarket == "stop-loss" &&
+        desiredStopLossPrice &&
+        currentOrderPrice < desiredStopLossPrice
+      ) {
+        log(
+          "Updating stop loss order with higher price: " +
+            orderPair +
+            " " +
+            currentOrderPrice +
+            " --> " +
+            desiredStopLossPrice +
+            " (+" +
+            ((1 - desiredStopLossPrice / currentOrderPrice) * 100).toFixed(1) +
+            "%)"
+        );
         editOrder(order, orderPair, desiredStopLossPrice);
       }
     }
 
     ordersDirty = false;
-
   });
 }
 
@@ -605,7 +679,7 @@ function getPrimaryNameForAsset(altname) {
     if (pairs[pair].altname == altname || pair == altname) {
       found = pair;
     }
-  })
+  });
   return found;
 }
 
@@ -616,7 +690,6 @@ setInterval(getTradeHistory, 1000 * ENGINE_TICK * 2);
 
 // cancels order for given order id
 function cancelOrder(orderId) {
-
   if (!orderId) return false;
 
   console.debug("Cancelling order:", orderId);
@@ -636,12 +709,11 @@ function cancelOrder(orderId) {
   );
 }
 
-// fetch trade history in batches. this call is batched to prevent rate limiting by kraken. 
+// fetch trade history in batches. this call is batched to prevent rate limiting by kraken.
 function getTradeHistory() {
-
   trades = [];
 
-  // hardcoded max size in kraken api 
+  // hardcoded max size in kraken api
   const sample = 50;
   const delayms = 105;
 
@@ -649,20 +721,22 @@ function getTradeHistory() {
   const max = 500;
 
   for (let i = 0; i < max; i += sample) {
-
     setTimeout(function () {
-      kraken.api("TradesHistory", { ofs: i, }, function (error, tradesHistoryData) {
-        if (error) {
-          console.error("Error updating trades history:", error);
-          return;
-        }
+      kraken.api(
+        "TradesHistory",
+        { ofs: i },
+        function (error, tradesHistoryData) {
+          if (error) {
+            console.error("Error updating trades history:", error);
+            return;
+          }
 
-        for (var trade in tradesHistoryData.result.trades) {
-          trades.push(tradesHistoryData.result.trades[trade]);
+          for (var trade in tradesHistoryData.result.trades) {
+            trades.push(tradesHistoryData.result.trades[trade]);
+          }
         }
-
-      })
-    }, delayms * i)
+      );
+    }, delayms * i);
   }
 }
 
@@ -674,54 +748,65 @@ var greedValue = null;
 var greedValueClassification = null;
 
 // update greed
-setInterval(getGreedStatistics, 1000 * ENGINE_TICK)
+setInterval(getGreedStatistics, 1000 * ENGINE_TICK);
 
-// we are getting greed stats from an external source, which informs us if 
-// we need to enter stop loss mode. 
+// we are getting greed stats from an external source, which informs us if
+// we need to enter stop loss mode.
 function getGreedStatistics() {
+  const https = require("https");
+  const apiUrl = "https://api.alternative.me/fng/"; // Replace with the actual API URL
 
-  const https = require('https');
-  const apiUrl = 'https://api.alternative.me/fng/'; // Replace with the actual API URL
+  https
+    .get(apiUrl, (response) => {
+      let data = "";
 
-  https.get(apiUrl, (response) => {
-    let data = '';
+      response.on("data", (chunk) => {
+        data += chunk;
+      });
 
-    response.on('data', (chunk) => {
-      data += chunk;
+      response.on("end", () => {
+        try {
+          const apiResponse = JSON.parse(data);
+          greedValue = apiResponse.data[0].value;
+          greedValueClassification = apiResponse.data[0].value_classification;
+        } catch (error) {
+          console.error("Error parsing greed data:", error);
+        }
+
+        if (greedValue && greedValueClassification) {
+          log(
+            "Current greed index: " +
+              greedValueClassification +
+              " (" +
+              greedValue +
+              "%)"
+          );
+
+          // if greed is too high, we should exit positions
+          stopLossModeEnabled = greedValue >= MAX_GREED_VALUE;
+
+          if (stopLossModeEnabled)
+            console.warn(
+              "Warning: Stop loss mode active due to high detected greed!"
+            );
+          // if (!stopLossModeEnabled) console.info("Markets are cool, we are cool.")
+        }
+      });
+    })
+    .on("error", (error) => {
+      console.error("Error fetching greed data:", error);
     });
-
-    response.on('end', () => {
-      try {
-        const apiResponse = JSON.parse(data);
-        greedValue = apiResponse.data[0].value;
-        greedValueClassification = apiResponse.data[0].value_classification;
-      } catch (error) {
-        console.error('Error parsing greed data:', error);
-      }
-
-      if (greedValue && greedValueClassification) {
-        log("Greed index: " + greedValueClassification + " (" + greedValue + "%)")
-
-        // if greed is too high, we should exit positions
-        stopLossModeEnabled = (greedValue >= MAX_GREED_VALUE)
-
-        if (stopLossModeEnabled) console.warn("Warning: Stop loss mode active due to high detected greed!")
-        // if (!stopLossModeEnabled) console.info("Markets are cool, we are cool.")
-      }
-
-    });
-  }).on('error', (error) => {
-    console.error('Error fetching greed data:', error);
-  });
 }
 
 // get trade balance info
-setInterval(updateBalance, (1000 * ENGINE_TICK));
+setInterval(updateBalance, 1000 * ENGINE_TICK);
 
 function updateBalance() {
-
-  const btcValue = ticker["XXBTZEUR"] ? (tradeBalance / parseFloat(ticker["XXBTZEUR"])).toFixed(3) : null
-  if (tradeBalance) log("Trade balance: " + tradeBalance + " (" + btcValue + " btc)");
+  const btcValue = ticker["XXBTZEUR"]
+    ? (tradeBalance / parseFloat(ticker["XXBTZEUR"])).toFixed(3)
+    : null;
+  if (tradeBalance)
+    log("Trade balance: " + tradeBalance + " (" + btcValue + " btc)");
 
   balanceHistory[new Date().toISOString().substring(0, 13)] = tradeBalance;
 
@@ -740,20 +825,19 @@ function updateBalance() {
     }
 
     for (var assetName in balanceData.result) {
-
       var amount = parseFloat(balanceData.result[assetName]);
 
       if (!wallet[assetName]) wallet[assetName] = {};
       wallet[assetName]["asset"] = assetName;
       wallet[assetName]["amount"] = amount;
 
-      // FIXME: special hack to give base currency balance also a value
+      // ensure base currency balance also has value
       if (assetName == "ZEUR") wallet[assetName]["value"] = amount;
     }
   });
 }
 
-// buy for a given price 
+// buy for a given price
 function buy(pair, volume) {
   if (volume > 0) {
     log("Adding order: buy " + volume + " " + pair + " @ market...");
@@ -764,7 +848,7 @@ function buy(pair, volume) {
         pair: pair,
         type: "buy",
         ordertype: "market", // NOTE we are market buying effectively ignoring price
-        volume: volume
+        volume: volume,
       },
       function (error, buydata) {
         if (error) {
@@ -801,7 +885,13 @@ function sell(type, pair, volume, price) {
       },
       function (error, selldata) {
         if (error) {
-          console.error(pair, volume, price, "Error adding sell order", error.message);
+          console.error(
+            pair,
+            volume,
+            price,
+            "Error adding sell order",
+            error.message
+          );
           return;
         }
 
@@ -815,7 +905,6 @@ function sell(type, pair, volume, price) {
 
 // cancels order for given order id
 function editOrder(orderId, orderPair, newPrice) {
-
   if (!orderId || !orderPair || !newPrice) return false;
 
   console.debug("Edit order:", orderId, orderPair, newPrice);
@@ -825,7 +914,7 @@ function editOrder(orderId, orderPair, newPrice) {
     {
       txid: orderId,
       pair: orderPair,
-      price: newPrice
+      price: newPrice,
     },
     function (error) {
       if (error) {
@@ -850,4 +939,3 @@ function trimToPrecision(pair, price) {
   console.error("Unknown price format for pair.", pair);
   return price;
 }
-
