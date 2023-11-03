@@ -1,6 +1,6 @@
 {
   "name": "npm-kraken-bot",
-  "version": "0.9.0",
+  "version": "1.0.4",
   "description": "a simple cryptocurrency trader bot for kraken",
   "keywords": [
     "kraken",
