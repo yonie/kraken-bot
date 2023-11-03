@@ -279,7 +279,6 @@ let pairs;
 let pairsExploded;
 
 // determine pairs
-// TODO: this should be re-run after some time to prevent "asset unknown" errors after a while of running
 kraken.api("AssetPairs", null, function (error, pairdata) {
   if (error) {
     console.error("Critical error fetching asset pairs:", error);
