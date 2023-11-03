@@ -1,11 +1,5 @@
 // @ts-check
 
-// TODO: make currency pair configurable?
-// TODO: make minBTC and maxBTC price for shareofwallet configurable
-// TODO: make webserver an option
-// TODO: get rid of settings.example
-// TODO: extract considerBuy(asset) and considerSell(asset) functions
-
 // logging including date/time
 let log = require("./log.js");
 log("initializing..");
