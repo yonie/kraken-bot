@@ -21,7 +21,7 @@ const krakenPasscode = process.env.KRAKEN_PASSCODE;
 // get the settings
 let settings = require("./settings.js");
 const percentageDrop = settings.percentageDrop;
-const stopLossModeEnabled = settings.stopLossModeEnabled;
+let stopLossModeEnabled = settings.stopLossModeEnabled;
 const stopLossPercentage = settings.stopLossPercentage;
 const minTradeVolume = settings.minTradeVolume;
 const maxSharePerAssetPercent = settings.maxSharePerAssetPercent;
@@ -48,7 +48,13 @@ const NUM_TRADE_HISTORY = 150;
 
 // determines how much % near low the lasttrade needs to be to consider buying
 // eg. set to 0 to only buy assets that are at their lowest observed point 
-const BUY_TOLERANCE = 25;
+const BUY_TOLERANCE = 20;
+
+// the maximum amount of greed we allow before we enabled stop loss mode
+const MAX_GREED_VALUE = 70;
+
+// the maximum amount an asset can crash before we begin to ignore it
+const MAX_DROP = 40;
 
 // internal flag used to keep the engine aware whether orders have been updated
 let ordersDirty = true;
@@ -60,14 +66,17 @@ let kraken = new KrakenClient(krakenKey, krakenPasscode);
 const http = require("http");
 const url = require("url");
 
+// port where the internal web interface is available. set to -1 to disable internal web server
 const HTTP_PORT = 8000;
-const server = http.createServer().listen(HTTP_PORT);
+
+const server = http.createServer();
+if (HTTP_PORT > -1) server.listen(HTTP_PORT);
 
 server.on("listening", function () {
   log("listening on port " + HTTP_PORT);
 });
 
-let balance;
+let tradeBalance;
 
 // internal web server, can be used for inspection of operation
 server.on("request", (request, response) => {
@@ -90,8 +99,8 @@ server.on("request", (request, response) => {
     response.writeHead(200, {
       "Content-Type": contenttype,
     });
-    if (balance && ticker && ticker["XXBTZEUR"]) {
-      var result = balance / parseInt(ticker["XXBTZEUR"].split(" ")[0]);
+    if (tradeBalance && ticker && ticker["XXBTZEUR"]) {
+      var result = tradeBalance / parseInt(ticker["XXBTZEUR"].split(" ")[0]);
       response.write(JSON.stringify(result));
     }
     response.end();
@@ -104,8 +113,8 @@ server.on("request", (request, response) => {
     response.writeHead(200, {
       "Content-Type": contenttype,
     });
-    if (balance) {
-      response.write(JSON.stringify(parseFloat(balance)));
+    if (tradeBalance) {
+      response.write(JSON.stringify(parseFloat(tradeBalance)));
     }
     response.end();
     return;
@@ -152,14 +161,14 @@ server.on("request", (request, response) => {
     "<!doctype HTML><html><head><title>kraken</title></head><body>"
   );
   response.write("<h1><a href=\"/\">kraken</a></h1>");
-  if (balance && wallet["ZEUR"] && wallet["ZEUR"].value)
-    response.write("<h2>latest balance: " + balance + " (" + ((wallet["ZEUR"].value / balance) * 100).toFixed(0) + "% free)</h2>");
+  if (tradeBalance && wallet["ZEUR"] && wallet["ZEUR"].value)
+    response.write("<h2>latest balance: " + tradeBalance + " (" + ((wallet["ZEUR"].value / tradeBalance) * 100).toFixed(0) + "% free)</h2>");
 
   // try to show btc value next to eur value
-  if (balance && ticker && ticker["XXBTZEUR"])
+  if (tradeBalance && ticker && ticker["XXBTZEUR"])
     response.write(
       `<h3>${(
-        balance / parseInt(ticker["XXBTZEUR"].split(" ")[0])
+        tradeBalance / parseInt(ticker["XXBTZEUR"].split(" ")[0])
       ).toPrecision(4)} btc</h3>`
     );
 
@@ -213,7 +222,7 @@ server.on("request", (request, response) => {
   if (orders) {
     response.write("<p>latest orders:</p>");
     response.write("<ul>");
-    Object.keys(orders).forEach(function(orderId) {
+    Object.keys(orders).forEach(function (orderId) {
       const order = orders[orderId];
       // filter for desired pair if provided
       if (!requestedPair || order.descr.pair === requestedPair || order.descr.pair === pairs[requestedPair]?.altname) {
@@ -263,9 +272,7 @@ kraken.api("AssetPairs", null, function (error, pairdata) {
   // push all pairs into an object
   pairs = {};
   for (let assetpair in pairdata["result"]) {
-    if (assetpair.endsWith("EUR")) {
-      pairs[assetpair] = pairdata["result"][assetpair];
-    }
+    if (assetpair.endsWith("EUR")) pairs[assetpair] = pairdata["result"][assetpair];
   }
 
   // get the exploded variant
@@ -274,13 +281,13 @@ kraken.api("AssetPairs", null, function (error, pairdata) {
   TRADING_ENABLED ? log("trading on " + Object.keys(pairs).length + " pairs.") : log("NOT trading!");
 
   // do initial requests
-  setTimeout(getTradeBalance, 1000);
+  setTimeout(updateBalance, 1000);
   setTimeout(getTradeHistory, 4000);
   setTimeout(updateOpenOrders, 2000);
   setTimeout(getTicker, 3000);
 });
 
-var ticker;
+var ticker = {};
 
 // main routine
 setInterval(getTicker, 1000 * ENGINE_TICK);
@@ -298,7 +305,7 @@ function getTicker() {
         process.exit(1);
       }
 
-      ticker = {};
+      let balanceSum = 0;
 
       // loop through the pairs in a random order
       (Object.keys(tickerdata.result)).forEach(function (pair) {
@@ -331,6 +338,7 @@ function getTicker() {
           if (wallet[asset]["amount"]) {
             wallet[asset]["value"] =
               wallet[asset]["amount"] * wallet[asset]["price"];
+            balanceSum += wallet[asset].value;
           }
         }
 
@@ -355,117 +363,142 @@ function getTicker() {
           tradevolume;
 
         // check if we have hard set to skip trading
-        if (!TRADING_ENABLED) {
-          return;
-        }
+        if (!TRADING_ENABLED) return;
 
         // if we don't know our balance we should not trade
-        if (!balance) {
-          return;
-        }
+        if (!tradeBalance) return;
 
         // make sure we have order info before we start trading
-        if (ordersDirty) {
-          return;
-        }
+        if (ordersDirty) return;
 
-        // determine if we want to buy
-        if (!stopLossModeEnabled && move >= percentageDrop && distancefromlow <= BUY_TOLERANCE) {
+        // check if we want to buy
+        if (!stopLossModeEnabled && move >= percentageDrop && move < MAX_DROP && distancefromlow <= BUY_TOLERANCE)
+          considerBuy(pair, tradevolume, lasttrade, asset)
 
-          console.debug("Potentially interesting asset:", pair, ticker[pair]);
-          // adjust how much we buy based on btc price
-          let shareOfWallet = 0.75;
-          let btcPrice = ticker["XXBTZEUR"]
-            ? parseFloat(ticker["XXBTZEUR"].split(" ")[0])
-            : null;
-          if (btcPrice && btcPrice < 45000) shareOfWallet = 0.86;
-          if (btcPrice && btcPrice < 40000) shareOfWallet = 0.67;
-          if (btcPrice && btcPrice < 35000) shareOfWallet = 0.52;
-          if (btcPrice && btcPrice < 30000) shareOfWallet = 0.4;
-          if (btcPrice && btcPrice < 25000) shareOfWallet = 0.31;
-          if (btcPrice && btcPrice < 20000) shareOfWallet = 0.24;
-          if (btcPrice && btcPrice < 15000) shareOfWallet = 0.19;
+        // check if we want to sell
+        if (wallet && wallet[asset] && wallet[asset]["amount"] > 0) considerSell(move, lasttrade, pair, asset)
 
-          // make sure stable coins don't count toward "share of wallet"
-          const stablestuff =
-            wallet["PAXG"] && wallet["PAXG"].value ? wallet["PAXG"].value : 0;
-
-          // also make sure we don't buy stuff below minimum trade volume
-          if (
-            wallet["ZEUR"] &&
-            wallet["ZEUR"].amount + stablestuff > balance * shareOfWallet &&
-            tradevolume > minTradeVolume
-          ) {
-
-            let buyPrice = lasttrade;
-            let buyVolume = (fixedBuyAmount / buyPrice)
-
-            // clean up if we can
-            if (pairs[pair].lot_decimals) buyVolume = Number(buyVolume.toFixed(pairs[pair].lot_decimals));
-
-            // make sure the minimum order size works with the API
-            if (pairs[pair].ordermin) buyVolume = Math.max(buyVolume, pairs[pair].ordermin);
-
-            // if we have too much of one asset (including orders!), don't buy more
-            const buyOrderValue = sumOpenBuyOrderValue(pair);
-            const ownedAssetValue =
-              wallet && wallet[asset] && wallet[asset].value ? wallet[asset]["value"] : 0;
-
-            if ((buyVolume * buyPrice) + (buyOrderValue ?? 0) + ownedAssetValue < (maxSharePerAssetPercent / 100) * balance) {
-
-              // buy stuff
-              buy(pair, buyVolume);
-
-              // make the order book "dirty" again (otherwise we keep ordering until next order book update)
-              ordersDirty = true;
-              setTimeout(updateOpenOrders, 5000);
-            }
-          }
-        }
-
-        if (wallet && wallet[asset] && wallet[asset]["amount"] > 0) {
-          // determine the sell price based on observed movement and a magic value: ex. (10-3) * 0.61 = 4.27%
-          const SELL_RATIO = 0.61;
-          var sellmod =
-            (Math.max(move, percentageDrop) - BUY_TOLERANCE / 10) * SELL_RATIO * 0.01 +
-            1;
-          var sellPrice = lasttrade * sellmod;
-
-          // quick hack for API
-          sellPrice = trimToPrecision(pair, sellPrice);
-          if (!sellPrice) {
-            console.error("Error calculating sell price.", pair, sellPrice)
-            return
-          }
-
-          // check open orders to see if a sell order is even still possible
-          const openSellOrderVolume = getSellOrderVolume(pair);
-          const notYetForSale = wallet[asset]["amount"] - (openSellOrderVolume ?? 0);
-          if (notYetForSale * lasttrade > MIN_SELL_AMOUNT) console.info("Found asset somehow not yet for sale:", pair, notYetForSale, notYetForSale * lasttrade)
-
-          const walletAmount = wallet[asset].amount;
-
-          // sell volume is what remains decucing open orders from the held amount
-          let sellVolume = (walletAmount - (openSellOrderVolume ?? 0));
-
-          // clean up if we can
-          if (pairs[pair].lot_decimals) sellVolume = Number(sellVolume.toFixed(pairs[pair].lot_decimals));
-
-          // don't trade if have too little to sell
-          if (sellVolume * sellPrice > MIN_SELL_AMOUNT) {
-
-            if (!stopLossModeEnabled) sell("limit", pair, sellVolume, sellPrice);
-            if (stopLossModeEnabled) sell("stop-loss", pair, sellVolume, trimToPrecision(pair, lasttrade * ((100 - stopLossPercentage) / 100)));
-
-            // make the order book "dirty" again otherwise we keep ordering until next update
-            ordersDirty = true;
-            setTimeout(updateOpenOrders, 5000);
-          }
-        }
       });
+
+      // temp hack to keep track of trade balance manually because the api is broken atm
+      balanceSum += wallet["ZEUR"].value;
+      tradeBalance = balanceSum.toFixed(2);
+
     }
   );
 }
+
+function considerBuy(pair, tradevolume, lasttrade, asset) {
+
+  console.debug("Potentially interesting asset:", pair, ticker[pair]);
+
+  const shareOfWallet = getShareOfWallet()
+  console.log(shareOfWallet)
+  if (shareOfWallet == null) return
+
+  // make sure stable coins don't count toward "share of wallet"
+  const stablestuff =
+    wallet["PAXG"] && wallet["PAXG"].value ? wallet["PAXG"].value : 0;
+
+  // also make sure we don't buy stuff below minimum trade volume
+  if (
+    wallet["ZEUR"] &&
+    wallet["ZEUR"].amount + stablestuff > tradeBalance * shareOfWallet &&
+    tradevolume > minTradeVolume
+  ) {
+
+    let buyPrice = lasttrade;
+    let buyVolume = (fixedBuyAmount / buyPrice)
+
+    // clean up if we can
+    if (pairs[pair].lot_decimals) buyVolume = Number(buyVolume.toFixed(pairs[pair].lot_decimals));
+
+    // make sure the minimum order size works with the API
+    if (pairs[pair].ordermin) buyVolume = Math.max(buyVolume, pairs[pair].ordermin);
+
+    // if we have too much of one asset (including orders!), don't buy more
+    const buyOrderValue = sumOpenBuyOrderValue(pair);
+    const ownedAssetValue =
+      wallet && wallet[asset] && wallet[asset].value ? wallet[asset]["value"] : 0;
+
+    if ((buyVolume * buyPrice) + (buyOrderValue ?? 0) + ownedAssetValue < (maxSharePerAssetPercent / 100) * tradeBalance) {
+
+      // buy stuff
+      buy(pair, buyVolume);
+
+      // make the order book "dirty" again (otherwise we keep ordering until next order book update)
+      ordersDirty = true;
+      setTimeout(updateOpenOrders, 5000);
+    }
+  }
+
+}
+
+function getShareOfWallet() {
+
+  // adjust how much we buy based on btc price
+  let btcPrice = ticker["XXBTZEUR"]
+    ? parseFloat(ticker["XXBTZEUR"].split(" ")[0])
+    : null;
+
+  // if btc price is unknown we're not proceeding
+  if (!btcPrice) {
+    console.warn("BTC price not yet known, aborting potential trade.")
+    return;
+  }
+  if (btcPrice < 15000) return 0.19;
+  if (btcPrice < 20000) return 0.24;
+  if (btcPrice < 25000) return 0.31;
+  if (btcPrice < 30000) return 0.4;
+  if (btcPrice < 35000) return 0.52;
+  if (btcPrice < 40000) return 0.67;
+  if (btcPrice < 45000) return 0.86;
+
+  return 0.86;
+
+}
+
+function considerSell(move, lasttrade, pair, asset) {
+  // determine the sell price based on observed movement and a magic value: ex. (10-3) * 0.61 = 4.27%
+  const SELL_RATIO = 0.61;
+  var sellmod =
+    (Math.max(move, percentageDrop) - BUY_TOLERANCE / 10) * SELL_RATIO * 0.01 +
+    1;
+  var sellPrice = lasttrade * sellmod;
+
+  // quick hack for API
+  sellPrice = trimToPrecision(pair, sellPrice);
+  if (!sellPrice) {
+    console.error("Error calculating sell price.", pair, sellPrice)
+    return
+  }
+
+  // check open orders to see if a sell order is even still possible
+  const openSellOrderVolume = getSellOrderVolume(pair);
+  const notYetForSale = wallet[asset]["amount"] - (openSellOrderVolume ?? 0);
+  if (notYetForSale * lasttrade > MIN_SELL_AMOUNT) console.info("Found asset somehow not yet for sale:", pair, notYetForSale, notYetForSale * lasttrade)
+
+  const walletAmount = wallet[asset].amount;
+
+  // sell volume is what remains decucing open orders from the held amount
+  let sellVolume = (walletAmount - (openSellOrderVolume ?? 0));
+
+  // clean up if we can
+  if (pairs[pair].lot_decimals) sellVolume = Number(sellVolume.toFixed(pairs[pair].lot_decimals));
+
+  // don't trade if have too little to sell
+  if (sellVolume * sellPrice > MIN_SELL_AMOUNT) {
+
+    if (!stopLossModeEnabled) sell("limit", pair, sellVolume, sellPrice);
+    if (stopLossModeEnabled) sell("stop-loss", pair, sellVolume, trimToPrecision(pair, lasttrade * ((100 - stopLossPercentage) / 100)));
+
+    // make the order book "dirty" again otherwise we keep ordering until next update
+    //ordersDirty = true;
+    setTimeout(updateOpenOrders, 5000);
+  }
+}
+
+
 
 // helper function to easily calculate the total amount of open order value for a given pair
 function sumOpenBuyOrderValue(pair) {
@@ -551,15 +584,16 @@ function updateOpenOrders() {
         cancelOrder(order);
       }
 
-      // in stop loss mode, if we have a stop loss order that we should replan, cancel it so a new one can be made
+      // if we have a stop loss order that we should replan, cancel it so a new one can be made
       const desiredStopLossPrice = lastTradePrice ? trimToPrecision(orderPair, lastTradePrice * ((100 - stopLossPercentage) / 100)) : null;
       if (orderBuySell == "sell" && orderLimitMarket == "stop-loss" && desiredStopLossPrice && currentOrderPrice < desiredStopLossPrice) {
-        log("Editing stop loss order with new price: " + order);
+        log("Updating stop loss order with higher price: " + orderPair + " " + currentOrderPrice + " --> " + desiredStopLossPrice + " (+" + ((1 - (desiredStopLossPrice / currentOrderPrice)) * 100).toFixed(1) + "%)");
         editOrder(order, orderPair, desiredStopLossPrice);
       }
     }
 
     ordersDirty = false;
+
   });
 }
 
@@ -602,127 +636,121 @@ function cancelOrder(orderId) {
   );
 }
 
-// cancels order for given order id
-function editOrder(orderId, orderPair, newPrice) {
-
-  if (!orderId || !orderPair || !newPrice) return false;
-
-  console.debug("Edit order:", orderId, orderPair, newPrice);
-
-  kraken.api(
-    "EditOrder",
-    {
-      txid: orderId,
-      pair: orderPair,
-      price: newPrice
-    },
-    function (error) {
-      if (error) {
-        console.error("Error editing order:", error);
-        return false;
-      }
-      return true;
-    }
-  );
-}
-
+// fetch trade history in batches. this call is batched to prevent rate limiting by kraken. 
 function getTradeHistory() {
-  kraken.api("TradesHistory", null, function (error, tradesHistoryData) {
-    if (error) {
-      console.error("Error updating trades history:", error);
-      return;
-    }
 
-    trades = [];
-    for (var trade in tradesHistoryData.result.trades)
-      trades.push(tradesHistoryData.result.trades[trade]);
+  trades = [];
 
-    kraken.api(
-      "TradesHistory",
-      {
-        ofs: 50,
-      },
-      function (error, tradesHistoryData) {
+  // hardcoded max size in kraken api 
+  const sample = 50;
+  const delayms = 105;
+
+  // how much history do we want
+  const max = 500;
+
+  for (let i = 0; i < max; i += sample) {
+
+    setTimeout(function () {
+      kraken.api("TradesHistory", { ofs: i, }, function (error, tradesHistoryData) {
         if (error) {
           console.error("Error updating trades history:", error);
           return;
         }
 
-        for (var trade in tradesHistoryData.result.trades)
+        for (var trade in tradesHistoryData.result.trades) {
           trades.push(tradesHistoryData.result.trades[trade]);
+        }
 
-        kraken.api(
-          "TradesHistory",
-          {
-            ofs: 100,
-          },
-          function (error, tradesHistoryData) {
-            if (error) {
-              console.error("Error updating trades history:", error);
-              return;
-            }
-
-            for (var trade in tradesHistoryData.result.trades)
-              trades.push(tradesHistoryData.result.trades[trade]);
-          }
-        );
-      }
-    );
-  });
+      })
+    }, delayms * i)
+  }
 }
 
 var wallet = {};
 
 var balanceHistory = [];
 
-// get trade balance info
-setInterval(getTradeBalance, (1000 * ENGINE_TICK) / 2);
+var greedValue = null;
+var greedValueClassification = null;
 
-function getTradeBalance() {
-  kraken.api(
-    "TradeBalance",
-    {
-      asset: "ZEUR",
-    },
-    function (error, tradeBalanceData) {
-      if (error) {
-        console.error("Error getting trade balance:", error);
-        return;
+// update greed
+setInterval(getGreedStatistics, 1000 * ENGINE_TICK)
+
+// we are getting greed stats from an external source, which informs us if 
+// we need to enter stop loss mode. 
+function getGreedStatistics() {
+
+  const https = require('https');
+  const apiUrl = 'https://api.alternative.me/fng/'; // Replace with the actual API URL
+
+  https.get(apiUrl, (response) => {
+    let data = '';
+
+    response.on('data', (chunk) => {
+      data += chunk;
+    });
+
+    response.on('end', () => {
+      try {
+        const apiResponse = JSON.parse(data);
+        greedValue = apiResponse.data[0].value;
+        greedValueClassification = apiResponse.data[0].value_classification;
+      } catch (error) {
+        console.error('Error parsing greed data:', error);
       }
 
-      balance = parseFloat(tradeBalanceData.result.eb).toFixed(2);
-      log("Trade balance: " + balance);
+      if (greedValue && greedValueClassification) {
+        log("Greed index: " + greedValueClassification + " (" + greedValue + "%)")
 
-      balanceHistory[new Date().toISOString().substring(0, 13)] = balance;
+        // if greed is too high, we should exit positions
+        stopLossModeEnabled = (greedValue >= MAX_GREED_VALUE)
 
-      // get asset balance
-      kraken.api("Balance", null, function (error, balanceData) {
-        if (error) {
-          console.error("Error getting balance:", error);
-          return;
-        }
+        if (stopLossModeEnabled) console.warn("Warning: Stop loss mode active due to high detected greed!")
+        // if (!stopLossModeEnabled) console.info("Markets are cool, we are cool.")
+      }
 
-        // check the items in our current wallet if they are still there
-        for (var walletAsset in wallet) {
-          if (balanceData.result[walletAsset] == null) {
-            wallet[walletAsset] = null;
-          }
-        }
+    });
+  }).on('error', (error) => {
+    console.error('Error fetching greed data:', error);
+  });
+}
 
-        for (var assetName in balanceData.result) {
+// get trade balance info
+setInterval(updateBalance, (1000 * ENGINE_TICK));
 
-          var amount = parseFloat(balanceData.result[assetName]);
+function updateBalance() {
 
-          if (!wallet[assetName]) wallet[assetName] = {};
-          wallet[assetName]["asset"] = assetName;
-          wallet[assetName]["amount"] = amount;
+  const btcValue = ticker["XXBTZEUR"] ? (tradeBalance / parseFloat(ticker["XXBTZEUR"])).toFixed(3) : null
+  if (tradeBalance) log("Trade balance: " + tradeBalance + " (" + btcValue + " btc)");
 
-          // FIXME: special hack to give base currency balance also a value
-          if (assetName == "ZEUR") wallet[assetName]["value"] = amount;
-        }
-      });
+  balanceHistory[new Date().toISOString().substring(0, 13)] = tradeBalance;
+
+  // get asset balance
+  kraken.api("Balance", null, function (error, balanceData) {
+    if (error) {
+      console.error("Error getting balance:", error);
+      return;
     }
-  );
+
+    // check the items in our current wallet if they are still there
+    for (var walletAsset in wallet) {
+      if (balanceData.result[walletAsset] == null) {
+        wallet[walletAsset] = null;
+      }
+    }
+
+    for (var assetName in balanceData.result) {
+
+      var amount = parseFloat(balanceData.result[assetName]);
+
+      if (!wallet[assetName]) wallet[assetName] = {};
+      wallet[assetName]["asset"] = assetName;
+      wallet[assetName]["amount"] = amount;
+
+      // FIXME: special hack to give base currency balance also a value
+      if (assetName == "ZEUR") wallet[assetName]["value"] = amount;
+    }
+  });
 }
 
 // buy for a given price 
@@ -785,6 +813,30 @@ function sell(type, pair, volume, price) {
   }
 }
 
+// cancels order for given order id
+function editOrder(orderId, orderPair, newPrice) {
+
+  if (!orderId || !orderPair || !newPrice) return false;
+
+  console.debug("Edit order:", orderId, orderPair, newPrice);
+
+  kraken.api(
+    "EditOrder",
+    {
+      txid: orderId,
+      pair: orderPair,
+      price: newPrice
+    },
+    function (error) {
+      if (error) {
+        console.error("Error editing order:", error);
+        return false;
+      }
+      return true;
+    }
+  );
+}
+
 // clean up price to deal with specifications imposed by kraken API
 function trimToPrecision(pair, price) {
   if (!pair || !price) {
@@ -798,3 +850,4 @@ function trimToPrecision(pair, price) {
   console.error("Unknown price format for pair.", pair);
   return price;
 }
+

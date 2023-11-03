@@ -12,22 +12,23 @@ I became interested in automated crypto trading, and as I don't want to monitor 
 
 ## Key features
 
-* Includes a web interface for manual inspection of recent trades and orders.
-* Exposes basic balance data so it can be logged or graphed by external software (see crypto-stats).
+* Includes a simple internal web interface for manual inspection of recent trades and orders.
 * Automatically monitors all trading pairs available on the exchange and responds to any price change on minute-by-minute basis.
 * Will only invest a smaller percentage of the wallet when prices get higher (as observed by BTC price) to reduce risk. 
 * The bot has built-in logic to dump a token if it dropped more than 10x the desired sell price. 
-* As Kraken volume is larger on EUR compared to USD or other currencies, the bot is hardwired to trade against the EUR asset. You need to have some EUR balance for it to be able to work.
+* Constantly monitors Bitcoin Fear & Greed index and will switch into "stop loss mode" once a certain amount of greed is observed. 
+* Exposes basic balance data so it can be logged or graphed by external software (see crypto-stats).
 
 ## Known issues
 
+* As Kraken volume is larger on EUR compared to USD or other currencies, the bot is hardwired to trade against the EUR asset. You need to have some EUR balance for it to be able to work.
 * The bot tries to keep at most X percentage of any asset in wallet. However, if an asset price drops dramatically (eg. the 2022 Terra/Luna asset collapse) it could mean that the bot keeps buying more of the asset while it drops further. Thread with caution, and never put funds in your wallet that you cannot miss.
 * If you configure the bot to buy too easily (eg when assets are not actually dropping in price much) you might end up buying for higher price than you sell. Ensuring that `percentageDrop` is set to at least 5% or more will likely prevent this from happening. 
 * Some newly listed assets might not immediately work due to parsing errors in the token name or other unexpected issues.
 
 ## Requirements
 
-* Console based environment with Node and NPM available, can be Windows or Linux based. 
+* Console based environment with recent Node and NPM available, can be Windows or Linux based. 
 * Ideally, the bot runs 24/7 to respond to market developments. So consider lightweight Docker containers or Rasperry Pi-like devices. The bot has been tested to run fine on Raspberry Pi 3 and up. 
 * You will need an account at Kraken exchange, and an API key linked to a wallet containing sufficient funds to begin trading. Note that the funds must be in EUR as this is the currency the bot will use to buy crypto assets.
 
