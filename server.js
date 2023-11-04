@@ -201,7 +201,7 @@ server.on("request", (request, response) => {
       "<h3>" +
         requestedPair +
         ": " +
-        (ticker ? ticker[requestedPair] : "") +
+        (ticker && ticker[requestedPair] ? ticker[requestedPair] : "") +
         "</h3>"
     );
     const asset = requestedPair.slice(0, -3);
@@ -213,7 +213,7 @@ server.on("request", (request, response) => {
           " " +
           wallet[asset].amount +
           " (eur " +
-          wallet[asset].value +
+          wallet[asset].value.toFixed(2) +
           ")</h4>"
       );
   }
@@ -766,7 +766,7 @@ setInterval(getGreedStatistics, 1000 * ENGINE_TICK);
 // we need to enter stop loss mode.
 function getGreedStatistics() {
   const https = require("https");
-  const apiUrl = "https://api.alternative.me/fng/"; // Replace with the actual API URL
+  const apiUrl = "https://api.alternative.me/fng/"; 
 
   https
     .get(apiUrl, (response) => {
