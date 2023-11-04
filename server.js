@@ -173,12 +173,16 @@ server.on("request", (request, response) => {
     );
 
   // try to show btc value next to eur value
-  if (tradeBalance && ticker && ticker["XXBTZEUR"])
+  if (tradeBalance && ticker && ticker["XXBTZEUR"]) {
     response.write(
       `<h3>${(
         tradeBalance / parseInt(ticker["XXBTZEUR"].split(" ")[0])
-      ).toPrecision(4)} btc</h3>`
+      ).toPrecision(4)} btc`
     );
+    if (greedValue) response.write(` (greed index: ${greedValue}%)`);
+    response.write(`</h3>`);
+    if (STOP_LOSS_MODE) response.write(`<h4>note: stop loss mode active!</h4>`)
+  }
 
   response.write('<a href="/wallet">wallet</a><br/>');
   response.write('<a href="/trades">trades</a><br/>');
@@ -192,7 +196,7 @@ server.on("request", (request, response) => {
   let requestedPair = request.url
     ? getPrimaryNameForAsset(url.parse(request.url, true).query["pair"])
     : null;
-  if (requestedPair)
+  if (requestedPair) {
     response.write(
       "<h3>" +
         requestedPair +
@@ -200,6 +204,19 @@ server.on("request", (request, response) => {
         (ticker ? ticker[requestedPair] : "") +
         "</h3>"
     );
+    const asset = requestedPair.slice(0, -3);
+    if (wallet[asset].amount && wallet[asset].value)
+      response.write(
+        "<h4>Current holdings: " +
+          " $" +
+          asset +
+          " " +
+          wallet[asset].amount +
+          " (eur " +
+          wallet[asset].value +
+          ")</h4>"
+      );
+  }
 
   if (trades) {
     response.write("<p>latest trades:</p>");
@@ -356,11 +373,13 @@ function getTicker() {
           if (wallet[asset]["amount"]) {
             wallet[asset]["value"] =
               wallet[asset]["amount"] * wallet[asset]["price"];
+
+            // add to our total observed balance
             balanceSum += wallet[asset].value;
           }
         }
 
-        // do some basic intepretation of the data
+        // do some basic intepretation of the ticker data
         var distancefromlow = Math.round(
           ((lasttrade - daylow) / (dayhi - daylow)) * 100
         );
@@ -403,7 +422,7 @@ function getTicker() {
           considerSell(move, lasttrade, pair, asset);
       });
 
-      // temp hack to keep track of trade balance manually because the api is broken atm
+      // add our non-asset balance to complete the sum
       balanceSum += wallet["ZEUR"].value;
       tradeBalance = balanceSum.toFixed(2);
     }
@@ -614,7 +633,7 @@ function updateOpenOrders() {
         orderBuySell == "sell" &&
         orderLimitMarket == "limit"
       ) {
-        log("Cancelling limit order as we are now in stoploss mode: " + order);
+        log("Cancelling limit order as we are now in stoploss mode: " + orders[order].descr.order);
         cancelOrder(order);
       }
 
@@ -627,7 +646,7 @@ function updateOpenOrders() {
         currentOrderPrice > lastTradePrice * 10
       ) {
         log(
-          "Cancelling limit order because it has become unattainable: " + order
+          "Cancelling limit order because it has become unattainable: " +  orders[order].descr.order
         );
         cancelOrder(order);
       }
@@ -782,7 +801,6 @@ function getGreedStatistics() {
             console.warn(
               "Warning: Stop loss mode active due to high detected greed!"
             );
-          // if (!stopLossModeEnabled) console.info("Markets are cool, we are cool.")
         }
       });
     })
