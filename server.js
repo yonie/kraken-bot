@@ -1,7 +1,33 @@
 // @ts-check
 
+let logs = [];
+
+// simple log helper, tradepair is optional
+function log(string, pair) {
+  if (typeof pair === "undefined") {
+    pair = "";
+  }
+
+  var d = new Date();
+  var datestring =
+    ("0" + d.getDate()).slice(-2) +
+    "-" +
+    ("0" + (d.getMonth() + 1)).slice(-2) +
+    "-" +
+    d.getFullYear() +
+    " " +
+    ("0" + d.getHours()).slice(-2) +
+    ":" +
+    ("0" + d.getMinutes()).slice(-2);
+
+  let fullMessage =
+    datestring + " " + (pair != "" ? pair + " " : "") + string;
+
+  console.log(fullMessage);
+  logs.unshift(fullMessage);
+}
+
 // logging including date/time
-let log = require("./log.js");
 log("initializing..");
 
 // eslint-disable-next-line no-unused-vars
@@ -56,7 +82,7 @@ const BUY_TOLERANCE = 20;
 const MAX_DROP = 40;
 
 // internally used to check if we are in stoploss mode
-let STOP_LOSS_MODE = false;
+let STOP_LOSS_MODE;
 
 // internal flag used to keep the engine aware whether orders have been updated
 let ORDERS_DIRTY = true;
@@ -144,6 +170,17 @@ server.on("request", (request, response) => {
     return;
   }
 
+  // json array of logs
+  if (request.url?.includes("/logs")) {
+    contenttype = "application/json";
+    response.writeHead(200, {
+      "Content-Type": contenttype,
+    });
+    response.write(JSON.stringify(logs));
+    response.end();
+    return;
+  }
+
   // custom formatted price information
   if (request.url?.includes("/ticker")) {
     contenttype = "application/json";
@@ -181,7 +218,7 @@ server.on("request", (request, response) => {
     );
     if (greedValue) response.write(` (greed index: ${greedValue}%)`);
     response.write(`</h3>`);
-    if (STOP_LOSS_MODE) response.write(`<h4>note: stop loss mode active!</h4>`)
+    if (STOP_LOSS_MODE) response.write(`<h4>note: stop loss mode active!</h4>`);
   }
 
   response.write('<a href="/wallet">wallet</a><br/>');
@@ -190,7 +227,8 @@ server.on("request", (request, response) => {
     response.write(
       '<a href="/orders">orders (' + Object.keys(orders).length + ")</a><br/>"
     );
-  response.write('<a href="/ticker">ticker</a><br/>');
+    response.write('<a href="/ticker">ticker</a><br/>');
+    response.write('<a href="/logs">logs</a><br/>');
 
   // we support selecting a single assets to see data for eg. ?pair=btceur
   let requestedPair = request.url
@@ -410,6 +448,7 @@ function getTicker() {
 
         // check if we want to buy
         if (
+          greedValue &&
           !STOP_LOSS_MODE &&
           move >= percentageDrop &&
           move < MAX_DROP &&
@@ -633,7 +672,10 @@ function updateOpenOrders() {
         orderBuySell == "sell" &&
         orderLimitMarket == "limit"
       ) {
-        log("Cancelling limit order as we are now in stoploss mode: " + orders[order].descr.order);
+        log(
+          "Cancelling limit order as we are now in stoploss mode: " +
+            orders[order].descr.order
+        );
         cancelOrder(order);
       }
 
@@ -646,7 +688,8 @@ function updateOpenOrders() {
         currentOrderPrice > lastTradePrice * 10
       ) {
         log(
-          "Cancelling limit order because it has become unattainable: " +  orders[order].descr.order
+          "Cancelling limit order because it has become unattainable: " +
+            orders[order].descr.order
         );
         cancelOrder(order);
       }
@@ -766,7 +809,7 @@ setInterval(getGreedStatistics, 1000 * ENGINE_TICK);
 // we need to enter stop loss mode.
 function getGreedStatistics() {
   const https = require("https");
-  const apiUrl = "https://api.alternative.me/fng/"; 
+  const apiUrl = "https://api.alternative.me/fng/";
 
   https
     .get(apiUrl, (response) => {
