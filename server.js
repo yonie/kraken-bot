@@ -20,8 +20,7 @@ function log(string, pair) {
     ":" +
     ("0" + d.getMinutes()).slice(-2);
 
-  let fullMessage =
-    datestring + " " + (pair != "" ? pair + " " : "") + string;
+  let fullMessage = datestring + " " + (pair != "" ? pair + " " : "") + string;
 
   console.log(fullMessage);
   logs.unshift(fullMessage);
@@ -227,8 +226,8 @@ server.on("request", (request, response) => {
     response.write(
       '<a href="/orders">orders (' + Object.keys(orders).length + ")</a><br/>"
     );
-    response.write('<a href="/ticker">ticker</a><br/>');
-    response.write('<a href="/logs">logs</a><br/>');
+  response.write('<a href="/ticker">ticker</a><br/>');
+  response.write('<a href="/logs">logs</a><br/>');
 
   // we support selecting a single assets to see data for eg. ?pair=btceur
   let requestedPair = request.url
@@ -462,7 +461,7 @@ function getTicker() {
       });
 
       // add our non-asset balance to complete the sum
-      balanceSum += wallet["ZEUR"].value;
+      if (wallet["ZEUR"].value) balanceSum += wallet["ZEUR"].value;
       tradeBalance = balanceSum.toFixed(2);
     }
   );
@@ -803,6 +802,7 @@ var greedValue = null;
 var greedValueClassification = null;
 
 // update greed
+setTimeout(getGreedStatistics, 1000);
 setInterval(getGreedStatistics, 1000 * ENGINE_TICK);
 
 // we are getting greed stats from an external source, which informs us if
@@ -829,21 +829,18 @@ function getGreedStatistics() {
         }
 
         if (greedValue && greedValueClassification) {
+          // if greed is too high, we should exit positions
+          STOP_LOSS_MODE = greedValue >= maxGreedPercentage;
+
           log(
             "Current greed index: " +
               greedValueClassification +
               " (" +
               greedValue +
-              "%)"
+              "%). " +
+              "Stop loss mode: " +
+              STOP_LOSS_MODE
           );
-
-          // if greed is too high, we should exit positions
-          STOP_LOSS_MODE = greedValue >= maxGreedPercentage;
-
-          if (STOP_LOSS_MODE)
-            console.warn(
-              "Warning: Stop loss mode active due to high detected greed!"
-            );
         }
       });
     })
