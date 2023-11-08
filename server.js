@@ -742,27 +742,6 @@ var trades = [];
 // get trade history info
 setInterval(getTradeHistory, 1000 * ENGINE_TICK * 2);
 
-// cancels order for given order id
-function cancelOrder(orderId) {
-  if (!orderId) return false;
-
-  console.debug("Cancelling order:", orderId);
-
-  kraken.api(
-    "CancelOrder",
-    {
-      txid: orderId,
-    },
-    function (error) {
-      if (error) {
-        console.error("Error cancelling order:", error);
-        return false;
-      }
-      return true;
-    }
-  );
-}
-
 // fetch trade history in batches. this call is batched to prevent rate limiting by kraken.
 function getTradeHistory() {
   trades = [];
@@ -954,7 +933,7 @@ function sell(type, pair, volume, price) {
   }
 }
 
-// cancels order for given order id
+// edits order for given order id
 function editOrder(orderId, orderPair, newPrice) {
   if (!orderId || !orderPair || !newPrice) return false;
 
@@ -977,16 +956,37 @@ function editOrder(orderId, orderPair, newPrice) {
   );
 }
 
+// cancels order for given order id
+function cancelOrder(orderId) {
+  if (!orderId) return false;
+
+  console.debug("Cancelling order:", orderId);
+
+  kraken.api(
+    "CancelOrder",
+    {
+      txid: orderId,
+    },
+    function (error) {
+      if (error) {
+        console.error("Error cancelling order:", error);
+        return false;
+      }
+      return true;
+    }
+  );
+}
+
 // clean up price to deal with specifications imposed by kraken API
-function trimToPrecision(pair, price) {
-  if (!pair || !price) {
-    console.error("Invalid arguments.", pair, price);
+function trimToPrecision(pair, priceToTrim) {
+  if (!pair || !priceToTrim) {
+    console.error("Invalid arguments.", pair, priceToTrim);
     return;
   }
   var precision = pairs[pair].pair_decimals;
 
-  if (precision > -1) return price.toFixed(precision);
+  if (precision > -1) return priceToTrim.toFixed(precision);
 
   console.error("Unknown price format for pair.", pair);
-  return price;
+  return priceToTrim;
 }

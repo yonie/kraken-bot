@@ -8,7 +8,7 @@ exports.fixedBuyAmount = 50;
 exports.maxSharePerAssetPercent = 2.5;
 
 // minimum trade volume we want to see before considering to buy (in eur)
-exports.minTradeVolume = 10000;
+exports.minTradeVolume = 20000;
 
 // the maximum amount of observed greed we allow before we enter stop loss mode
 // stopLossMode will put stop loss orders for any held assets. those orders 
