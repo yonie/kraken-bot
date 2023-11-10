@@ -25,21 +25,24 @@ I became interested in automated crypto trading, and as I don't want to monitor 
 * As Kraken volume is larger on EUR compared to USD or other currencies, the bot is hardwired to trade against the EUR asset. You need to have some EUR balance for it to be able to work.
 * If you configure the bot to buy too easily (eg when assets are not actually dropping in price much) you might end up buying for higher price than you sell. Ensuring that `percentageDrop` is set to at least 5% or more will likely prevent this from happening. 
 * Some newly listed assets might not immediately work due to parsing errors in the token name or other unexpected issues.
+* You might get "invalid nonce" messages (while updating trades history) if you did not do any trades on this account yet. This is an API issue.
+* If you keep seeing nonce error messages, consider enlarging the API key nonce window to 10000 ms. See https://support.kraken.com/hc/en-us/articles/360001148023-What-is-a-nonce-window-
 
 ## Requirements
 
 * Console based environment with recent Node and NPM available, can be Windows or Linux based. 
 * Ideally, the bot runs 24/7 to respond to market developments. So consider lightweight Docker containers or Rasperry Pi-like devices. The bot has been tested to run fine on Raspberry Pi 3 and up. 
-* You will need an account at Kraken exchange, and an API key linked to a wallet containing sufficient funds to begin trading. Note that the funds must be in EUR as this is the currency the bot will use to buy crypto assets.
+* You will need a verified account at Kraken exchange, and an API key linked to a wallet containing sufficient funds to begin trading. Note that the funds must be in EUR as this is the currency the bot will use to buy crypto assets.
 
 ## Installation
 
 To use; 
 
-1. Review `settings.js`, change any settings you like or simply leave at default.
-2. Rename `.env.example` to `.env` and add your kraken API keys there.
-3. Install the dependencies using `npm -i`.
-4. Run the application using `node server.js`.
+1. IMPORTANT: Make sure the kraken account you are using is verified and funded with EUR balance!
+2. Review `settings.js`, change any settings you like or simply leave at default.
+3. Rename `.env.example` to `.env` and add your kraken API keys there. 
+4. Install the dependencies using `npm -i`.
+5. Run the application using `node server.js`.
 
 Note that new settings will only be reloaded upon restart of the application. 
 

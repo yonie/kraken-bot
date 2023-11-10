@@ -14,5 +14,5 @@ exports.minTradeVolume = 20000;
 // stopLossMode will put stop loss orders for any held assets. those orders 
 // will be refreshed if prices go up further. it will also not buy anything in 
 // this mode. to be used when market is percieved as topping out.
-exports.maxGreedPercentage = 70;
+exports.maxGreedPercentage = 69;
 exports.stopLossPercentage = 3;

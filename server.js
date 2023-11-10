@@ -447,8 +447,8 @@ function getTicker() {
 
         // check if we want to buy
         if (
-          greedValue &&
-          !STOP_LOSS_MODE &&
+          greedValue && 
+          greedValue < maxGreedPercentage && 
           move >= percentageDrop &&
           move < MAX_DROP &&
           distancefromlow <= BUY_TOLERANCE
@@ -461,7 +461,7 @@ function getTicker() {
       });
 
       // add our non-asset balance to complete the sum
-      if (wallet["ZEUR"].value) balanceSum += wallet["ZEUR"].value;
+      if (wallet && wallet["ZEUR"] && wallet["ZEUR"].value) balanceSum += wallet["ZEUR"].value;
       tradeBalance = balanceSum.toFixed(2);
     }
   );
@@ -672,7 +672,7 @@ function updateOpenOrders() {
         orderLimitMarket == "limit"
       ) {
         log(
-          "Cancelling limit order as we are now in stoploss mode: " +
+          "Cancelling limit order as we are in stoploss mode: " +
             orders[order].descr.order
         );
         cancelOrder(order);
@@ -751,7 +751,7 @@ function getTradeHistory() {
   const delayms = 105;
 
   // how much history do we want
-  const max = 500;
+  const max = 50;
 
   for (let i = 0; i < max; i += sample) {
     setTimeout(function () {
@@ -788,7 +788,7 @@ setInterval(getGreedStatistics, 1000 * ENGINE_TICK);
 // we need to enter stop loss mode.
 function getGreedStatistics() {
   const https = require("https");
-  const apiUrl = "https://api.alternative.me/fng/";
+  const apiUrl = "https://api.alternative.me/fng/?limit=2";
 
   https
     .get(apiUrl, (response) => {
@@ -802,6 +802,7 @@ function getGreedStatistics() {
         try {
           const apiResponse = JSON.parse(data);
           greedValue = apiResponse.data[0].value;
+          previousGreedValue = apiResponse.data[1].value;
           greedValueClassification = apiResponse.data[0].value_classification;
         } catch (error) {
           console.error("Error parsing greed data:", error);
@@ -809,7 +810,7 @@ function getGreedStatistics() {
 
         if (greedValue && greedValueClassification) {
           // if greed is too high, we should exit positions
-          STOP_LOSS_MODE = greedValue >= maxGreedPercentage;
+          STOP_LOSS_MODE = (greedValue >= maxGreedPercentage && previousGreedValue >= maxGreedPercentage)
 
           log(
             "Current greed index: " +
