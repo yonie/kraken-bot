@@ -22,11 +22,12 @@ I became interested in automated crypto trading, and as I don't want to monitor 
 
 ## Known issues
 
-* As Kraken volume is larger on EUR compared to USD or other currencies, the bot is hardwired to trade against the EUR asset. You need to have some EUR balance for it to be able to work.
+* The bot is hardwired to trade against the EUR asset, so USD is not currently supported. You need to have some EUR balance for it to be able to work.
 * If you configure the bot to buy too easily (eg when assets are not actually dropping in price much) you might end up buying for higher price than you sell. Ensuring that `percentageDrop` is set to at least 5% or more will likely prevent this from happening. 
 * Some newly listed assets might not immediately work due to parsing errors in the token name or other unexpected issues.
 * You might get "invalid nonce" messages (while updating trades history) if you did not do any trades on this account yet. This is an API issue.
 * If you keep seeing nonce error messages, consider enlarging the API key nonce window to 10000 ms. See https://support.kraken.com/hc/en-us/articles/360001148023-What-is-a-nonce-window-
+* Editing orders needs a change in the npm-kraken-api library, see https://github.com/nothingisdead/npm-kraken-api/pull/87
 
 ## Requirements
 

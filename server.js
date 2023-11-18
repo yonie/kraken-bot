@@ -175,7 +175,7 @@ server.on("request", (request, response) => {
     response.writeHead(200, {
       "Content-Type": contenttype,
     });
-    response.write(JSON.stringify(logs));
+    response.write(JSON.stringify(logs.slice(0,1000)));
     response.end();
     return;
   }
@@ -241,7 +241,8 @@ server.on("request", (request, response) => {
         (ticker && ticker[requestedPair] ? ticker[requestedPair] : "") +
         "</h3>"
     );
-    const asset = requestedPair.slice(0, -3);
+    //const asset = requestedPair.slice(0, -3);
+    const asset = pairs[requestedPair].base;
     if (wallet[asset].amount && wallet[asset].value)
       response.write(
         "<h4>Current holdings: " +
@@ -451,9 +452,10 @@ function getTicker() {
           greedValue < maxGreedPercentage && 
           move >= percentageDrop &&
           move < MAX_DROP &&
-          distancefromlow <= BUY_TOLERANCE
+          distancefromlow <= BUY_TOLERANCE &&
+          tradevolume >= minTradeVolume
         )
-          considerBuy(pair, tradevolume, lasttrade, asset);
+          considerBuy(pair, lasttrade, asset);
 
         // check if we want to sell
         if (wallet && wallet[asset] && wallet[asset]["amount"] > 0)
@@ -467,7 +469,7 @@ function getTicker() {
   );
 }
 
-function considerBuy(pair, tradevolume, lasttrade, asset) {
+function considerBuy(pair, lasttrade, asset) {
   console.debug("Potentially interesting asset:", pair, ticker[pair]);
 
   const shareOfWallet = getShareOfWallet();
@@ -480,8 +482,7 @@ function considerBuy(pair, tradevolume, lasttrade, asset) {
   // also make sure we don't buy stuff below minimum trade volume
   if (
     wallet["ZEUR"] &&
-    wallet["ZEUR"].amount + stablestuff > tradeBalance * shareOfWallet &&
-    tradevolume > minTradeVolume
+    wallet["ZEUR"].amount + stablestuff > tradeBalance * shareOfWallet
   ) {
     let buyPrice = lasttrade;
     let buyVolume = fixedBuyAmount / buyPrice;
@@ -782,7 +783,7 @@ var greedValueClassification = null;
 
 // update greed
 setTimeout(getGreedStatistics, 1000);
-setInterval(getGreedStatistics, 1000 * ENGINE_TICK);
+setInterval(getGreedStatistics, 1000 * ENGINE_TICK * 2 * 5);
 
 // we are getting greed stats from an external source, which informs us if
 // we need to enter stop loss mode.
@@ -799,29 +800,32 @@ function getGreedStatistics() {
       });
 
       response.on("end", () => {
+
         try {
           const apiResponse = JSON.parse(data);
           greedValue = apiResponse.data[0].value;
-          previousGreedValue = apiResponse.data[1].value;
+          const previousGreedValue = apiResponse.data[1].value;
           greedValueClassification = apiResponse.data[0].value_classification;
+
+          if (greedValue && greedValueClassification) {
+            // if greed is too high, we should exit positions
+            STOP_LOSS_MODE = (greedValue >= maxGreedPercentage && previousGreedValue >= maxGreedPercentage)
+  
+            log(
+              "Current greed index: " +
+                greedValueClassification +
+                " (" +
+                greedValue +
+                "%). " +
+                "Stop loss mode: " +
+                STOP_LOSS_MODE
+            );
+          }
+
         } catch (error) {
           console.error("Error parsing greed data:", error);
         }
 
-        if (greedValue && greedValueClassification) {
-          // if greed is too high, we should exit positions
-          STOP_LOSS_MODE = (greedValue >= maxGreedPercentage && previousGreedValue >= maxGreedPercentage)
-
-          log(
-            "Current greed index: " +
-              greedValueClassification +
-              " (" +
-              greedValue +
-              "%). " +
-              "Stop loss mode: " +
-              STOP_LOSS_MODE
-          );
-        }
       });
     })
     .on("error", (error) => {
@@ -834,10 +838,11 @@ setInterval(updateBalance, 1000 * ENGINE_TICK);
 
 function updateBalance() {
   const btcValue = ticker["XXBTZEUR"]
-    ? (tradeBalance / parseFloat(ticker["XXBTZEUR"])).toFixed(3)
+    ? (tradeBalance / parseFloat(ticker["XXBTZEUR"]))
     : null;
-  if (tradeBalance)
-    log("Trade balance: " + tradeBalance + " (" + btcValue + " btc)");
+  if (tradeBalance && btcValue)
+    log("Trade balance: " + tradeBalance + " (" + btcValue.toFixed(3) + " btc)");
+    log("Performance score: " + (Math.round(tradeBalance * btcValue * 100)/1000).toFixed(3));
 
   balanceHistory[new Date().toISOString().substring(0, 13)] = tradeBalance;
 
