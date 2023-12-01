@@ -175,7 +175,7 @@ server.on("request", (request, response) => {
     response.writeHead(200, {
       "Content-Type": contenttype,
     });
-    response.write(JSON.stringify(logs.slice(0,1000)));
+    response.write(JSON.stringify(logs.slice(0, 1000)));
     response.end();
     return;
   }
@@ -448,8 +448,8 @@ function getTicker() {
 
         // check if we want to buy
         if (
-          greedValue && 
-          greedValue < maxGreedPercentage && 
+          greedValue &&
+          greedValue < maxGreedPercentage &&
           move >= percentageDrop &&
           move < MAX_DROP &&
           distancefromlow <= BUY_TOLERANCE &&
@@ -463,7 +463,8 @@ function getTicker() {
       });
 
       // add our non-asset balance to complete the sum
-      if (wallet && wallet["ZEUR"] && wallet["ZEUR"].value) balanceSum += wallet["ZEUR"].value;
+      if (wallet && wallet["ZEUR"] && wallet["ZEUR"].value)
+        balanceSum += wallet["ZEUR"].value;
       tradeBalance = balanceSum.toFixed(2);
     }
   );
@@ -475,45 +476,53 @@ function considerBuy(pair, lasttrade, asset) {
   const shareOfWallet = getShareOfWallet();
   if (shareOfWallet == null) return;
 
-  // make sure stable coins don't count toward "share of wallet"
-  const stablestuff =
-    wallet["PAXG"] && wallet["PAXG"].value ? wallet["PAXG"].value : 0;
+  // make sure we don't buy stuff below minimum trade volume
+  if (wallet["ZEUR"] && wallet["ZEUR"].amount < tradeBalance * shareOfWallet)
+    return;
 
-  // also make sure we don't buy stuff below minimum trade volume
+  let buyPrice = lasttrade;
+  let buyVolume = fixedBuyAmount / buyPrice;
+
+  // clean up if we can
+  if (pairs[pair].lot_decimals)
+    buyVolume = Number(buyVolume.toFixed(pairs[pair].lot_decimals));
+
+  // make sure the minimum order size works with the API
+  if (pairs[pair].ordermin)
+    buyVolume = Math.max(buyVolume, pairs[pair].ordermin);
+
+  // if we have too much of one asset (including orders!), don't buy more
+  const buyOrderValue = sumOpenBuyOrderValue(pair);
+  const ownedAssetValue =
+    wallet && wallet[asset] && wallet[asset].value ? wallet[asset]["value"] : 0;
+
+  // check that we don't buy more than we want
   if (
-    wallet["ZEUR"] &&
-    wallet["ZEUR"].amount + stablestuff > tradeBalance * shareOfWallet
-  ) {
-    let buyPrice = lasttrade;
-    let buyVolume = fixedBuyAmount / buyPrice;
+    buyVolume * buyPrice + (buyOrderValue ?? 0) + ownedAssetValue >
+    (maxSharePerAssetPercent / 100) * tradeBalance
+  )
+    return;
 
-    // clean up if we can
-    if (pairs[pair].lot_decimals)
-      buyVolume = Number(buyVolume.toFixed(pairs[pair].lot_decimals));
+  // one final check, to see if market buy price is acceptable
+  const axios = require("axios");
+  const url = "https://api.kraken.com/0/public/Depth?pair=" + pair;
+  axios
+    .get(url)
+    .then((response) => {
+      // the ask price should be lower than the last trade
+      let marketBuyPrice = response.data.result[pair].asks[0][0];
+      if (marketBuyPrice > lasttrade) return;
 
-    // make sure the minimum order size works with the API
-    if (pairs[pair].ordermin)
-      buyVolume = Math.max(buyVolume, pairs[pair].ordermin);
-
-    // if we have too much of one asset (including orders!), don't buy more
-    const buyOrderValue = sumOpenBuyOrderValue(pair);
-    const ownedAssetValue =
-      wallet && wallet[asset] && wallet[asset].value
-        ? wallet[asset]["value"]
-        : 0;
-
-    if (
-      buyVolume * buyPrice + (buyOrderValue ?? 0) + ownedAssetValue <
-      (maxSharePerAssetPercent / 100) * tradeBalance
-    ) {
-      // buy stuff
+      // we're done checking. proceed to buy
       buy(pair, buyVolume);
 
       // make the order book "dirty" again (otherwise we keep ordering until next order book update)
       ORDERS_DIRTY = true;
       setTimeout(updateOpenOrders, 5000);
-    }
-  }
+    })
+    .catch((error) => {
+      console.error("Error fetching market buy data:", error);
+    });
 }
 
 function getShareOfWallet() {
@@ -800,7 +809,6 @@ function getGreedStatistics() {
       });
 
       response.on("end", () => {
-
         try {
           const apiResponse = JSON.parse(data);
           greedValue = apiResponse.data[0].value;
@@ -809,8 +817,10 @@ function getGreedStatistics() {
 
           if (greedValue && greedValueClassification) {
             // if greed is too high, we should exit positions
-            STOP_LOSS_MODE = (greedValue >= maxGreedPercentage && previousGreedValue >= maxGreedPercentage)
-  
+            STOP_LOSS_MODE =
+              greedValue >= maxGreedPercentage &&
+              previousGreedValue >= maxGreedPercentage;
+
             log(
               "Current greed index: " +
                 greedValueClassification +
@@ -821,11 +831,9 @@ function getGreedStatistics() {
                 STOP_LOSS_MODE
             );
           }
-
         } catch (error) {
           console.error("Error parsing greed data:", error);
         }
-
       });
     })
     .on("error", (error) => {
@@ -838,11 +846,17 @@ setInterval(updateBalance, 1000 * ENGINE_TICK);
 
 function updateBalance() {
   const btcValue = ticker["XXBTZEUR"]
-    ? (tradeBalance / parseFloat(ticker["XXBTZEUR"]))
+    ? tradeBalance / parseFloat(ticker["XXBTZEUR"])
     : null;
-  if (tradeBalance && btcValue)
-    log("Trade balance: " + tradeBalance + " (" + btcValue.toFixed(3) + " btc)");
-    log("Performance score: " + (Math.round(tradeBalance * btcValue * 100)/1000).toFixed(3));
+  if (tradeBalance && btcValue) {
+    log(
+      "Trade balance: " + tradeBalance + " (" + btcValue.toFixed(3) + " btc)"
+    );
+    log(
+      "Performance score: " +
+        (Math.round(tradeBalance * btcValue * 100) / 1000).toFixed(3)
+    );
+  }
 
   balanceHistory[new Date().toISOString().substring(0, 13)] = tradeBalance;
 
