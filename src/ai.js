@@ -14,7 +14,7 @@ let config = {
   apiKey: null,
   model: 'x-ai/grok-3-mini-beta',
   enabled: true,
-  intervalHours: 1
+  intervalMinutes: 30
 };
 
 // ============================================
@@ -552,8 +552,8 @@ function buildContext() {
 async function runAnalysis(force = false) {
   // Check cooldown
   if (!force && state.llmAnalysis.lastUpdate) {
-    const hours = (Date.now() - state.llmAnalysis.lastUpdate) / 3600000;
-    if (hours < config.intervalHours) {
+    const minutes = (Date.now() - state.llmAnalysis.lastUpdate) / 60000;
+    if (minutes < config.intervalMinutes) {
       return { skipped: true, reason: 'cooldown' };
     }
   }
@@ -572,7 +572,7 @@ async function runAnalysis(force = false) {
   const prompt = `You are an autonomous crypto trading bot. Response under 600 words.
 
 OPERATIONAL CONSTRAINTS:
-- I execute once per 30 minutes (unless manually triggered more often, and when i am restarted)
+- I execute once every ${config.intervalMinutes} minutes (unless manually triggered more often, and when i am restarted)
 - I can ONLY place LIMIT orders (BUY at price, SELL at price)
 - NO stop-losses, trailing stops, or market orders available
 - I make trading decisions NOW, return next time to see results and act again
@@ -723,5 +723,5 @@ module.exports = {
   init,
   runAnalysis,
   setEnabled: (enabled) => { config.enabled = enabled; },
-  setInterval: (hours) => { config.intervalHours = hours; }
+  setInterval: (minutes) => { config.intervalMinutes = minutes; }
 };

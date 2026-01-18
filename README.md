@@ -65,7 +65,7 @@ data/          # Persisted state (auto-created)
    LLM_MODEL=x-ai/grok-3-mini-beta    # Default model
    PORT=8000                           # Web dashboard port
    AI_ENABLED=true                     # Enable/disable AI trading
-   ANALYSIS_INTERVAL_HOURS=1           # How often AI runs analysis
+   ANALYSIS_INTERVAL_MINUTES=30        # How often AI runs analysis
    ```
 5. Start the bot:
    ```bash

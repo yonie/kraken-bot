@@ -23,7 +23,7 @@ const config = {
   llmModel: process.env.LLM_MODEL || 'x-ai/grok-3-mini-beta',
   port: process.env.PORT || 8000,
   aiEnabled: process.env.AI_ENABLED !== 'false',
-  analysisIntervalHours: parseFloat(process.env.ANALYSIS_INTERVAL_HOURS) || 1
+  analysisIntervalMinutes: parseFloat(process.env.ANALYSIS_INTERVAL_MINUTES) || 30
 };
 
 // ============================================
@@ -58,7 +58,7 @@ async function init() {
   if (config.openrouterKey) {
     ai.init(config.openrouterKey, config.llmModel);
     ai.setEnabled(config.aiEnabled);
-    ai.setInterval(config.analysisIntervalHours);
+    ai.setInterval(config.analysisIntervalMinutes);
   }
   
   // Fetch initial data
@@ -159,7 +159,7 @@ function startScheduledTasks() {
   
   // Run AI analysis based on configured interval
   if (config.openrouterKey && config.aiEnabled) {
-    const intervalMs = config.analysisIntervalHours * 60 * 60 * 1000;
+    const intervalMs = config.analysisIntervalMinutes * 60 * 1000;
     
     // Run initial analysis after 30 seconds
     setTimeout(async () => {
@@ -185,7 +185,7 @@ function startScheduledTasks() {
       }
     }, intervalMs);
     
-    log(`[SCHEDULER] AI analysis scheduled every ${config.analysisIntervalHours}h (${intervalMs}ms)`);
+    log(`[SCHEDULER] AI analysis scheduled every ${config.analysisIntervalMinutes}m (${intervalMs}ms)`);
   } else {
     log(`[SCHEDULER] AI analysis disabled (key: ${!!config.openrouterKey}, enabled: ${config.aiEnabled})`);
   }
