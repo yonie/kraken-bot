@@ -141,5 +141,6 @@ Licensed under GPL-3.0.
 
 Found this useful? Donations welcome:
 
+- Buy Me a Coffee: [yonie](https://buymeacoffee.com/yonie)
 - ETH: `0xf923fe5103D9FA645161c244024e9f8c7Ed67E29`
 - Solana: `9eFx8BNJGNN1PLkWxAxX3kLHVSLnnApFZfdcNMr3TjcR`
