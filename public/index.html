@@ -566,15 +566,15 @@
     <!-- Portfolio Chart -->
     <div class="card" style="margin-bottom: 20px;">
       <div class="card-header">
-        <h2>Portfolio Value (7 Days)</h2>
+        <h2>Portfolio vs BTC (7 Days)</h2>
         <div class="chart-legend">
           <div class="chart-legend-item">
             <div class="chart-legend-color" style="background: #3b82f6;"></div>
-            <span>EUR</span>
+            <span>Portfolio EUR</span>
           </div>
           <div class="chart-legend-item">
             <div class="chart-legend-color" style="background: #f7931a;"></div>
-            <span>BTC</span>
+            <span>BTC/EUR</span>
           </div>
         </div>
       </div>
@@ -1159,7 +1159,7 @@
       // Prepare data
       const labels = history.map(h => new Date(h.timestamp));
       const eurData = history.map(h => h.balanceEUR);
-      const btcData = history.map(h => h.balanceBTC);
+      const btcPriceData = history.map(h => h.btcPrice);
       
       // Destroy existing chart if any
       if (portfolioChart) {
@@ -1173,7 +1173,7 @@
           labels: labels,
           datasets: [
             {
-              label: 'EUR',
+              label: 'Portfolio EUR',
               data: eurData,
               borderColor: '#3b82f6',
               backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -1185,8 +1185,8 @@
               yAxisID: 'y'
             },
             {
-              label: 'BTC',
-              data: btcData,
+              label: 'BTC/EUR',
+              data: btcPriceData,
               borderColor: '#f7931a',
               backgroundColor: 'rgba(247, 147, 26, 0.1)',
               borderWidth: 2,
@@ -1220,10 +1220,10 @@
                   return new Date(items[0].parsed.x).toLocaleString();
                 },
                 label: function(context) {
-                  if (context.dataset.label === 'EUR') {
-                    return `EUR: ${context.parsed.y.toFixed(2)}`;
+                  if (context.dataset.label === 'Portfolio EUR') {
+                    return `Portfolio: €${context.parsed.y.toFixed(2)}`;
                   } else {
-                    return `BTC: ${context.parsed.y.toFixed(6)}`;
+                    return `BTC/EUR: €${context.parsed.y.toFixed(0)}`;
                   }
                 }
               }
@@ -1272,7 +1272,7 @@
               position: 'right',
               title: {
                 display: true,
-                text: 'BTC',
+                text: 'BTC/EUR',
                 color: '#f7931a'
               },
               grid: {
@@ -1281,7 +1281,7 @@
               ticks: {
                 color: '#f7931a',
                 callback: function(value) {
-                  return value.toFixed(4);
+                  return '€' + value.toFixed(0);
                 }
               }
             }

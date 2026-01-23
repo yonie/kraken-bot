@@ -76,6 +76,8 @@ data/          # Persisted state (auto-created)
 
 Access the dashboard at `http://localhost:8000` (or your configured port).
 
+![Dashboard Screenshot](screenshot.png)
+
 The dashboard shows:
 - Current positions with P&L
 - Open orders
