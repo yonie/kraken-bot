@@ -94,12 +94,12 @@ function startScheduledTasks() {
   // Refresh market data every 60 seconds
   const tickerInterval = setInterval(async () => {
     try {
-      log('[SCHEDULER] Refreshing ticker, balance, greed index...');
+      //log('[SCHEDULER] Refreshing ticker, balance, greed index...');
       await kraken.fetchTicker();
       await kraken.fetchBalance();
       await kraken.fetchGreedIndex();
       server.broadcast('state', server.getFullState());
-      log('[SCHEDULER] Market data refreshed');
+      //log('[SCHEDULER] Market data refreshed');
     } catch (e) {
       console.error('[SCHEDULER] Refresh error:', e.message);
     }

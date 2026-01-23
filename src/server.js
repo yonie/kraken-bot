@@ -161,7 +161,7 @@ function setupWebSocket() {
   
   wss.on('connection', (ws) => {
     clients.add(ws);
-    log(`[WS] Client connected (${clients.size} total)`);
+    //log(`[WS] Client connected (${clients.size} total)`);
     
     // Send initial state
     ws.send(JSON.stringify({ type: 'state', data: getFullState() }));
@@ -196,7 +196,7 @@ function setupWebSocket() {
     
     ws.on('close', () => {
       clients.delete(ws);
-      log(`[WS] Client disconnected (${clients.size} total)`);
+      //log(`[WS] Client disconnected (${clients.size} total)`);
     });
   });
 }

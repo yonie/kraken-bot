@@ -963,18 +963,34 @@
       }).join('');
     }
     
-    function updateAnalysis(analysis, isLiveUpdate = false) {
+    function updateAnalysis(analysis, isLiveUpdate = false, isNavigation = false) {
       const container = document.getElementById('analysisContent');
       
-      // If this is a live update (new analysis from server), add to history and reset to latest
+      // If this is a live update (new analysis from server), add to history
       if (isLiveUpdate && analysis && analysis.lastUpdate) {
         // Add to front of history if it's new
         if (!analysisHistory.length || analysisHistory[0].lastUpdate !== analysis.lastUpdate) {
+          const wasViewingLatest = historyIndex === 0;
           analysisHistory.unshift(analysis);
           // Keep only last 100
           if (analysisHistory.length > 100) analysisHistory = analysisHistory.slice(0, 100);
+          
+          // Only jump to latest if user was already viewing latest
+          // Otherwise, increment index to keep viewing the same historical entry
+          if (wasViewingLatest) {
+            historyIndex = 0;
+          } else {
+            historyIndex++;
+            updateHistoryNav(); // Update nav buttons but don't re-render content
+            return; // Don't re-render, keep showing the historical entry user was reading
+          }
         }
-        historyIndex = 0; // Reset to latest
+      }
+      
+      // If user is viewing a historical entry and this is just a state refresh (not live update or navigation),
+      // don't re-render - keep showing what they're reading
+      if (!isLiveUpdate && !isNavigation && historyIndex > 0) {
+        return;
       }
       
       if (!analysis || !analysis.lastUpdate) {
@@ -1019,14 +1035,14 @@
     function historyPrev() {
       if (historyIndex < analysisHistory.length - 1) {
         historyIndex++;
-        updateAnalysis(analysisHistory[historyIndex]);
+        updateAnalysis(analysisHistory[historyIndex], false, true);
       }
     }
     
     function historyNext() {
       if (historyIndex > 0) {
         historyIndex--;
-        updateAnalysis(analysisHistory[historyIndex]);
+        updateAnalysis(analysisHistory[historyIndex], false, true);
       }
     }
     
