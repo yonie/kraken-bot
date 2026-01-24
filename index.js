@@ -23,7 +23,8 @@ const config = {
   llmModel: process.env.LLM_MODEL || 'x-ai/grok-3-mini-beta',
   port: process.env.PORT || 8000,
   aiEnabled: process.env.AI_ENABLED !== 'false',
-  analysisIntervalMinutes: parseFloat(process.env.ANALYSIS_INTERVAL_MINUTES) || 30
+  analysisIntervalMinutes: parseFloat(process.env.ANALYSIS_INTERVAL_MINUTES) || 30,
+  countryCode: process.env.COUNTRY_CODE || null  // ISO 3166-1 alpha-2 code to filter available pairs
 };
 
 // ============================================
@@ -52,7 +53,7 @@ async function init() {
   loadAllState();
   
   // Initialize Kraken API
-  kraken.init(config.krakenKey, config.krakenSecret);
+  kraken.init(config.krakenKey, config.krakenSecret, config.countryCode);
   
   // Initialize AI module
   if (config.openrouterKey) {

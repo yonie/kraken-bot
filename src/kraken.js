@@ -8,6 +8,7 @@ const KrakenClient = require('kraken-api');
 const { state, log, saveTradeHistory, saveCostBasis, saveAnalytics } = require('./state');
 
 let kraken = null;
+let countryCode = null;  // ISO 3166-1 alpha-2 code for filtering available pairs
 
 // ============================================
 // RATE LIMITING
@@ -52,9 +53,14 @@ async function waitForRateLimit(cost) {
 // INITIALIZATION
 // ============================================
 
-function init(apiKey, apiSecret) {
+function init(apiKey, apiSecret, country = null) {
   kraken = new KrakenClient(apiKey, apiSecret);
-  log('[KRAKEN] API initialized');
+  countryCode = country;
+  if (countryCode) {
+    log(`[KRAKEN] API initialized with country filter: ${countryCode}`);
+  } else {
+    log('[KRAKEN] API initialized');
+  }
 }
 
 // ============================================
@@ -106,7 +112,10 @@ function getAssetFromPair(pair) {
 
 async function fetchPairs() {
   return new Promise((resolve, reject) => {
-    kraken.api('AssetPairs', null, (error, data) => {
+    // Build params - include country_code if configured to filter out restricted pairs
+    const params = countryCode ? { country_code: countryCode } : null;
+    
+    kraken.api('AssetPairs', params, (error, data) => {
       if (error) return reject(error);
       
       state.pairs = {};
@@ -134,7 +143,7 @@ async function fetchPairs() {
         }
       }
       
-      log(`[KRAKEN] Loaded ${Object.keys(state.pairs).length} EUR pairs`);
+      log(`[KRAKEN] Loaded ${Object.keys(state.pairs).length} EUR pairs${countryCode ? ` (filtered for ${countryCode})` : ''}`);
       resolve(state.pairs);
     });
   });
@@ -633,7 +642,7 @@ async function limitBuy(pair, amountEUR, price) {
       price: formattedPrice
     }, (error, data) => {
       if (error) {
-        console.error('[ORDER] Buy failed:', error.message);
+        log(`[ORDER] Buy failed: ${error.message}`);
         resolve({ success: false, error: error.message });
       } else {
         log(`[ORDER] Buy success: ${data.result?.descr?.order}`);
@@ -663,7 +672,7 @@ async function limitSell(pair, volume, price) {
       price: formattedPrice
     }, (error, data) => {
       if (error) {
-        console.error('[ORDER] Sell failed:', error.message);
+        log(`[ORDER] Sell failed: ${error.message}`);
         resolve({ success: false, error: error.message });
       } else {
         log(`[ORDER] Sell success: ${data.result?.descr?.order}`);
