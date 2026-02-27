@@ -709,8 +709,8 @@ ${ctx.topByVolume.map(m => {
 === TRADES LAST 7 DAYS (${ctx.recentTrades.length}) ===
 ${ctx.recentTrades.map(t => `[${t.time}] ${t.type.toUpperCase()} ${t.pair}: ${t.volume} @ ${t.price} = ${t.cost} EUR`).join('\n') || 'None'}
 
-=== PREVIOUS ${ctx.previousDecisions.length} DECISIONS (note that these might reflect different trading strategies from the one defined from now on, you should see this mostly as informative not authorative) ===
-${ctx.previousDecisions.map(d => `[${d.time}] ${d.sentiment}/${d.risk} | ${d.commands}${d.analysis ? ' | "' + d.analysis + '"' : ''}`).join('\n') || 'None'}
+=== PREVIOUS ${ctx.previousDecisions.length} DECISIONS (historical context - may reference positions that no longer exist) ===
+${ctx.previousDecisions.map(d => `[${d.time}] ${d.sentiment}/${d.risk} | ${d.commands}${d.analysis ? ' | "' + d.analysis.substring(0, 100) + '..."' : ''}`).join('\n') || 'None'}
 
 === RECENT EXECUTION RESULTS (failed attempts indicate issues like delisted assets, market restrictions, or insufficient balance) ===
 ${ctx.recentExecutionResults.map(e => `[${e.time}] ${e.action} -> ${e.result}${e.error ? ` (${e.error})` : ''}`).join('\n') || 'None'}
@@ -719,7 +719,13 @@ ${ctx.recentExecutionResults.map(e => `[${e.time}] ${e.action} -> ${e.result}${e
 SENTIMENT: [bullish/neutral/bearish]
 RISK: [low/medium/high]
 
-ANALYSIS: [Your reasoning, 3-5 sentences. Reference specific data points. Try to not repeat the previous advice word-for-word, even if the conditions are similar explain how the situation relates to the last analysis instead of offering the same advice twice.]
+ANALYSIS: [Your reasoning, 3-5 sentences. Reference specific data points from CURRENT holdings and market data.]
+
+CRITICAL RULES:
+- Previous analyses are HISTORICAL OPINIONS - they may reference positions that no longer exist
+- Focus ONLY on what is CURRENT (check your holdings list above)
+- If an asset is NOT in your current holdings, do NOT mention it
+- Do not repeat phrases or observations from previous analyses
 
 COMMANDS:
 [One command per line, or HOLD if no action]
