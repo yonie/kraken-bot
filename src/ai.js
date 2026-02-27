@@ -370,17 +370,18 @@ async function executeCommands(actions) {
         result = await kraken.limitBuy(pair, action.amountEur, action.price);
       }
       
+      state.aiExecutionHistory.executions.push({
+        timestamp: Date.now(),
+        action: action.action,
+        asset: action.asset,
+        price: action.price,
+        result: result?.success ? 'success' : 'failed',
+        error: result?.error || null
+      });
       if (result?.success) {
-        state.aiExecutionHistory.executions.push({
-          timestamp: Date.now(),
-          action: action.action,
-          asset: action.asset,
-          price: action.price,
-          result: 'success'
-        });
         state.aiExecutionHistory.dailyCount++;
-        saveAIExecutions();
       }
+      saveAIExecutions();
       
       results.push({ ...action, ...result });
       
@@ -529,6 +530,25 @@ function buildContext() {
     analysis: h.analysis?.substring(0) || '' 
   }));
   
+  // Recent execution results - show last failures per unique action to avoid clutter
+  const recentExecutions = state.aiExecutionHistory.executions.slice(-20).reverse();
+  const seenKeys = new Set();
+  const recentExecutionResults = [];
+  for (const e of recentExecutions) {
+    const key = `${e.action}-${e.asset}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      recentExecutionResults.push({
+        action: `${e.action} ${e.asset}`,
+        result: e.result,
+        error: e.error,
+        time: new Date(e.timestamp).toLocaleString()
+      });
+    }
+    if (recentExecutionResults.length >= 10) break;
+  }
+  recentExecutionResults.reverse();
+  
   // Performance summary
   const analytics = state.tradeAnalytics.summary;
   
@@ -602,6 +622,7 @@ function buildContext() {
     recentTrades,
     openOrders,
     previousDecisions,
+    recentExecutionResults,
     analytics,
     // Portfolio history
     balanceHistory,
@@ -690,6 +711,9 @@ ${ctx.recentTrades.map(t => `[${t.time}] ${t.type.toUpperCase()} ${t.pair}: ${t.
 
 === PREVIOUS ${ctx.previousDecisions.length} DECISIONS (note that these might reflect different trading strategies from the one defined from now on, you should see this mostly as informative not authorative) ===
 ${ctx.previousDecisions.map(d => `[${d.time}] ${d.sentiment}/${d.risk} | ${d.commands}${d.analysis ? ' | "' + d.analysis + '"' : ''}`).join('\n') || 'None'}
+
+=== RECENT EXECUTION RESULTS (failed attempts indicate issues like delisted assets, market restrictions, or insufficient balance) ===
+${ctx.recentExecutionResults.map(e => `[${e.time}] ${e.action} -> ${e.result}${e.error ? ` (${e.error})` : ''}`).join('\n') || 'None'}
 
 === RESPONSE FORMAT ===
 SENTIMENT: [bullish/neutral/bearish]
