@@ -261,16 +261,23 @@ async function fetchBalance() {
   });
 }
 
-async function fetchOrders() {
+async function fetchOrders(retries = 2) {
   await waitForRateLimit(1);
   return new Promise((resolve) => {
-    kraken.api('OpenOrders', null, (error, data) => {
+    kraken.api('OpenOrders', null, async (error, data) => {
       if (error) {
+        // Retry on nonce errors (often caused by rapid successive calls)
+        if (error.message?.includes('nonce') && retries > 0) {
+          await new Promise(r => setTimeout(r, 500)); // wait 500ms before retry
+          return resolve(fetchOrders(retries - 1));
+        }
         console.error('[KRAKEN] Orders error:', error.message);
-        return resolve(null);
+        // Keep existing orders on error, don't clear them
+        return resolve(state.orders);
       }
       
-      state.orders = data.result?.open || {};
+      const newOrders = data.result?.open || {};
+      state.orders = newOrders;
       resolve(state.orders);
     });
   });
@@ -594,8 +601,44 @@ function getEnrichedPositions() {
       }
     }
     
+    // Calculate holding days by finding when continuous holding started
+    // Walk backwards through trades to find when position went to zero (or start of history)
+    let holdingStartTime = oldestTime; // fallback to cost basis time
+    if (state.fullTradeHistory && state.fullTradeHistory.trades) {
+      // Get all trades for this asset, sorted newest first
+      const assetTrades = Object.entries(state.fullTradeHistory.trades)
+        .filter(([id, trade]) => {
+          const tradePair = trade.pair;
+          const tradeAsset = tradePair.replace(/Z?EUR$/, '').replace(/^X+/, '');
+          return tradeAsset === asset || tradePair.includes(asset);
+        })
+        .map(([id, trade]) => ({
+          time: trade.time > 1e12 ? trade.time : trade.time * 1000,
+          volume: parseFloat(trade.vol),
+          type: trade.type
+        }))
+        .sort((a, b) => b.time - a.time); // newest first
+      
+      // Walk backwards in time, tracking position
+      // Start from current amount and subtract buys / add sells going back
+      let runningPosition = amount;
+      for (const trade of assetTrades) {
+        if (trade.type === 'buy') {
+          runningPosition -= trade.volume;
+        } else {
+          runningPosition += trade.volume;
+        }
+        // When position reaches zero or negative, the next buy started current holding
+        if (runningPosition <= 0.0001) { // small epsilon for float comparison
+          holdingStartTime = trade.time;
+          break;
+        }
+        holdingStartTime = trade.time; // keep updating as we go back
+      }
+    }
+    
     const unrealizedPnL = currentValue - costBasis;
-    const holdingDays = Math.floor((Date.now() - oldestTime) / (86400 * 1000));
+    const holdingDays = Math.floor((Date.now() - holdingStartTime) / (86400 * 1000));
     
     positions[asset] = {
       amount,
