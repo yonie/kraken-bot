@@ -251,10 +251,11 @@ async function executeCommands(actions) {
       const matchingOrders = Object.entries(state.orders).filter(([id, o]) => {
         const orderPair = o.descr?.pair;
         const orderType = o.descr?.type;
+        const orderAsset = cleanAssetName(orderPair?.replace(/Z?EUR$/, '') || '');
         const pairMatch = orderPair === pair || 
                           orderPair === pair.replace('ZEUR', 'EUR') ||
                           orderPair === pair.replace('EUR', 'ZEUR') ||
-                          orderPair?.replace(/Z?EUR$/, '') === action.asset;
+                          orderAsset === action.asset;
         return pairMatch && orderType === action.orderType;
       });
       
@@ -511,7 +512,7 @@ function buildContext() {
     id,  // Order ID for CANCEL command
     type: o.descr?.type,
     pair: o.descr?.pair,
-    asset: o.descr?.pair?.replace(/Z?EUR$/, '') || 'UNKNOWN',
+    asset: cleanAssetName(o.descr?.pair?.replace(/Z?EUR$/, '')) || 'UNKNOWN',
     price: o.descr?.price,
     volume: parseFloat(o.vol).toFixed(6),
     orderType: o.descr?.ordertype,
