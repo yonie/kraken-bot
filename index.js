@@ -19,12 +19,15 @@ const server = require('./src/server');
 const config = {
   krakenKey: process.env.KRAKEN_KEY,
   krakenSecret: process.env.KRAKEN_PASSCODE,
+  llmProvider: process.env.LLM_PROVIDER || 'ollama',
   openrouterKey: process.env.OPENROUTER_API_KEY,
-  llmModel: process.env.LLM_MODEL || 'x-ai/grok-3-mini-beta',
+  llmModel: process.env.LLM_MODEL || 'qwen3.5:cloud',
+  ollamaHost: process.env.OLLAMA_HOST || 'localhost',
+  ollamaPort: parseInt(process.env.OLLAMA_PORT) || 11434,
   port: process.env.PORT || 8000,
   aiEnabled: process.env.AI_ENABLED !== 'false',
   analysisIntervalMinutes: parseFloat(process.env.ANALYSIS_INTERVAL_MINUTES) || 30,
-  countryCode: process.env.COUNTRY_CODE || null  // ISO 3166-1 alpha-2 code to filter available pairs
+  countryCode: process.env.COUNTRY_CODE || null
 };
 
 // ============================================
@@ -36,8 +39,9 @@ if (!config.krakenKey || !config.krakenSecret) {
   process.exit(1);
 }
 
-if (!config.openrouterKey) {
-  console.warn('WARNING: Missing OPENROUTER_API_KEY - AI analysis will be disabled');
+const canUseAI = config.llmProvider === 'ollama' || config.openrouterKey;
+if (!canUseAI) {
+  console.warn('WARNING: No LLM provider configured - AI analysis will be disabled');
 }
 
 // ============================================
@@ -56,8 +60,14 @@ async function init() {
   kraken.init(config.krakenKey, config.krakenSecret, config.countryCode);
   
   // Initialize AI module
-  if (config.openrouterKey) {
-    ai.init(config.openrouterKey, config.llmModel);
+  if (canUseAI) {
+    ai.init({
+      provider: config.llmProvider,
+      apiKey: config.openrouterKey,
+      model: config.llmModel,
+      ollamaHost: config.ollamaHost,
+      ollamaPort: config.ollamaPort
+    });
     ai.setEnabled(config.aiEnabled);
     ai.setInterval(config.analysisIntervalMinutes);
   }
@@ -92,29 +102,18 @@ async function init() {
 function startScheduledTasks() {
   log('[SCHEDULER] Starting scheduled tasks...');
   
-  // Refresh market data every 60 seconds
-  const tickerInterval = setInterval(async () => {
+  // Refresh all data every 60 seconds, then broadcast once
+  const refreshInterval = setInterval(async () => {
     try {
-      //log('[SCHEDULER] Refreshing ticker, balance, greed index...');
       await kraken.fetchTicker();
       await kraken.fetchBalance();
+      await kraken.fetchOrders();
       await kraken.fetchGreedIndex();
       server.broadcast('state', server.getFullState());
-      //log('[SCHEDULER] Market data refreshed');
     } catch (e) {
       console.error('[SCHEDULER] Refresh error:', e.message);
     }
   }, 60 * 1000);
-  
-  // Refresh orders every 30 seconds
-  const ordersInterval = setInterval(async () => {
-    try {
-      await kraken.fetchOrders();
-      server.broadcast('orders', state.orders);
-    } catch (e) {
-      console.error('[SCHEDULER] Orders refresh error:', e.message);
-    }
-  }, 30 * 1000);
   
   // Sync new trades every 5 minutes (rate-limited, uses cached data)
   const tradesInterval = setInterval(async () => {
@@ -153,13 +152,12 @@ function startScheduledTasks() {
   }, 5000); // 5 seconds after startup
   
   // Ensure intervals are not garbage collected
-  tickerInterval.unref && tickerInterval.ref();
-  ordersInterval.unref && ordersInterval.ref();
+  refreshInterval.unref && refreshInterval.ref();
   tradesInterval.unref && tradesInterval.ref();
   balanceSnapshotInterval.unref && balanceSnapshotInterval.ref();
   
   // Run AI analysis based on configured interval
-  if (config.openrouterKey && config.aiEnabled) {
+  if (canUseAI && config.aiEnabled) {
     const intervalMs = config.analysisIntervalMinutes * 60 * 1000;
     
     // Run initial analysis after 30 seconds
@@ -167,7 +165,7 @@ function startScheduledTasks() {
       try {
         log('[SCHEDULER] Running initial AI analysis...');
         await ai.runAnalysis(true);  // force=true to bypass cooldown
-        server.broadcast('analysis', state.llmAnalysis);
+        server.broadcast('state', server.getFullState());
         log('[SCHEDULER] Initial AI analysis complete');
       } catch (e) {
         console.error('[SCHEDULER] AI analysis error:', e.message);
@@ -179,7 +177,7 @@ function startScheduledTasks() {
       try {
         log('[SCHEDULER] Running scheduled AI analysis...');
         await ai.runAnalysis(true);  // force=true to bypass cooldown
-        server.broadcast('analysis', state.llmAnalysis);
+        server.broadcast('state', server.getFullState());
         log('[SCHEDULER] Scheduled AI analysis complete');
       } catch (e) {
         console.error('[SCHEDULER] AI analysis error:', e.message);
@@ -188,7 +186,7 @@ function startScheduledTasks() {
     
     log(`[SCHEDULER] AI analysis scheduled every ${config.analysisIntervalMinutes}m (${intervalMs}ms)`);
   } else {
-    log(`[SCHEDULER] AI analysis disabled (key: ${!!config.openrouterKey}, enabled: ${config.aiEnabled})`);
+    log(`[SCHEDULER] AI analysis disabled (provider: ${config.llmProvider}, enabled: ${config.aiEnabled})`);
   }
   
   log('[SCHEDULER] Background tasks started');

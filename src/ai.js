@@ -5,14 +5,18 @@
  */
 
 const https = require('https');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { state, log, saveLLMAnalysis, saveLLMHistory, saveAIExecutions, DATA_DIR } = require('./state');
 const kraken = require('./kraken');
 
 let config = {
+  provider: 'openrouter',
   apiKey: null,
   model: 'x-ai/grok-3-mini-beta',
+  ollamaHost: 'localhost',
+  ollamaPort: 11434,
   enabled: true,
   intervalMinutes: 30
 };
@@ -21,10 +25,18 @@ let config = {
 // INITIALIZATION
 // ============================================
 
-function init(apiKey, model) {
-  config.apiKey = apiKey;
-  if (model) config.model = model;
-  log(`[AI] Initialized with model: ${config.model}`);
+function init(options = {}) {
+  if (typeof options === 'string') {
+    config.apiKey = options;
+    if (arguments[1]) config.model = arguments[1];
+  } else {
+    config.provider = options.provider || config.provider;
+    config.apiKey = options.apiKey || null;
+    config.model = options.model || config.model;
+    config.ollamaHost = options.ollamaHost || config.ollamaHost;
+    config.ollamaPort = options.ollamaPort || config.ollamaPort;
+  }
+  log(`[AI] Initialized with provider: ${config.provider}, model: ${config.model}`);
 }
 
 // ============================================
@@ -42,6 +54,54 @@ function sanitizeResponse(text) {
 }
 
 async function callLLM(prompt) {
+  if (config.provider === 'ollama') {
+    return callOllama(prompt);
+  }
+  return callOpenRouter(prompt);
+}
+
+async function callOllama(prompt) {
+  return new Promise((resolve, reject) => {
+    const postData = JSON.stringify({
+      model: config.model,
+      messages: [{ role: 'user', content: prompt }],
+      stream: false
+    });
+
+    const req = http.request({
+      hostname: config.ollamaHost,
+      port: config.ollamaPort,
+      path: '/api/chat',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 120000
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) {
+            reject(new Error(parsed.error));
+          } else {
+            resolve(sanitizeResponse(parsed.message?.content));
+          }
+        } catch (e) {
+          reject(new Error('Failed to parse Ollama response: ' + e.message));
+        }
+      });
+    });
+
+    req.on('error', e => reject(new Error('Ollama connection failed: ' + e.message)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('Ollama timeout')); });
+    req.write(postData);
+    req.end();
+  });
+}
+
+async function callOpenRouter(prompt) {
   if (!config.apiKey) {
     console.error('[AI] No API key configured');
     return null;
@@ -578,12 +638,9 @@ OPERATIONAL CONSTRAINTS:
 - I make trading decisions NOW, return next time to see results and act again
 - Speak in first person ("I am buying...", "I will sell...") - I AM the trader, not an advisor
 - Be confident but measured in tone - no hype, no aggression
+- Make sure to come up with a strategy for all open positions
 
 GOAL: To the moon. 
-
-STRATEGY:
-- Be smart: whenever you see a position with a profit of >10% or >100EUR, realise it (by selling at the current bid price). This is crypto you never know when the tables turn on you.
-- Be careful trading assets with very low (<1000 EUR) volume as they might be stale and not dynamic enough for a good return.
 
 === PORTFOLIO SUMMARY ===
 Total Portfolio: ${ctx.totalPortfolio} EUR
@@ -630,7 +687,7 @@ ${ctx.topByVolume.map(m => {
 === TRADES LAST 7 DAYS (${ctx.recentTrades.length}) ===
 ${ctx.recentTrades.map(t => `[${t.time}] ${t.type.toUpperCase()} ${t.pair}: ${t.volume} @ ${t.price} = ${t.cost} EUR`).join('\n') || 'None'}
 
-=== MY PREVIOUS ${ctx.previousDecisions.length} DECISIONS ===
+=== PREVIOUS ${ctx.previousDecisions.length} DECISIONS (note that these might reflect different trading strategies from the one defined from now on, you should see this mostly as informative not authorative) ===
 ${ctx.previousDecisions.map(d => `[${d.time}] ${d.sentiment}/${d.risk} | ${d.commands}${d.analysis ? ' | "' + d.analysis + '"' : ''}`).join('\n') || 'None'}
 
 === RESPONSE FORMAT ===
