@@ -159,6 +159,14 @@ const server = http.createServer((req, res) => {
 function setupWebSocket() {
   wss = new WebSocket.Server({ server });
   
+  setInterval(() => {
+    for (const client of clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.ping();
+      }
+    }
+  }, 30000);
+  
   wss.on('connection', (ws) => {
     clients.add(ws);
     //log(`[WS] Client connected (${clients.size} total)`);
@@ -177,15 +185,17 @@ function setupWebSocket() {
             break;
           
           case 'analyze':
+            // log('[WS] Analyze request received');
             await ai.runAnalysis(true);
-            broadcast('analysis', state.llmAnalysis);
+            // log('[WS] Broadcasting state update');
+            broadcast('state', getFullState());
             break;
           
           case 'cancel':
             if (data?.orderId) {
               await kraken.cancelOrder(data.orderId);
               await kraken.fetchOrders();
-              broadcast('orders', state.orders);
+              broadcast('state', getFullState());
             }
             break;
         }
@@ -203,11 +213,14 @@ function setupWebSocket() {
 
 function broadcast(type, data) {
   const msg = JSON.stringify({ type, data });
+  // let sent = 0;
   for (const client of clients) {
     if (client.readyState === WebSocket.OPEN) {
       client.send(msg);
+      // sent++;
     }
   }
+  // log(`[WS] Broadcast '${type}' to ${sent} clients`);
 }
 
 // ============================================
@@ -261,13 +274,17 @@ function getAssetDetails(assetName) {
   }
   
   // Get recent trades for this asset (both buys and sells)
+  // Get all trades for this specific asset from last 7 days
+  const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
   const assetTrades = Object.entries(state.fullTradeHistory.trades)
     .filter(([id, trade]) => {
       const tradePair = trade.pair;
       const tradeAsset = tradePair.replace(/Z?EUR$/, '').replace(/^X+/, '');
-      return tradeAsset === normalizedAsset || 
+      const tradeTime = trade.time > 1e12 ? trade.time / 1000 : trade.time;
+      return (tradeAsset === normalizedAsset || 
              tradePair === pair ||
-             tradePair.includes(normalizedAsset);
+             tradePair.includes(normalizedAsset)) &&
+             tradeTime >= sevenDaysAgo;
     })
     .map(([id, trade]) => ({
       id,
@@ -278,8 +295,7 @@ function getAssetDetails(assetName) {
       time: trade.time,
       pair: trade.pair
     }))
-    .sort((a, b) => b.time - a.time)
-    .slice(0, 50);
+    .sort((a, b) => b.time - a.time);
   
   // Get open orders for this asset
   const openOrders = Object.entries(state.orders)
@@ -353,8 +369,8 @@ function getAssetDetails(assetName) {
       totalTrades: assetTrades.length
     },
     
-    // Recent activity
-    recentTrades: assetTrades.slice(0, 20),
+    // Recent activity (all trades from last 7 days)
+    recentTrades: assetTrades,
     openOrders,
     closedPnL
   };
@@ -403,13 +419,12 @@ function start() {
     log(`[SERVER] Running on http://0.0.0.0:${PORT}`);
   });
   
-  // Periodic state broadcasts to keep frontend in sync
-  // Note: This only broadcasts current state, actual data refresh happens in index.js scheduler
+  // Periodic state broadcasts to keep frontend responsive
   setInterval(() => {
     if (clients.size > 0) {
       broadcast('state', getFullState());
     }
-  }, 15000); // Broadcast every 15 seconds to keep frontend responsive
+  }, 15000);
 }
 
 module.exports = {
