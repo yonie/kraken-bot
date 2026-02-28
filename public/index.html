@@ -977,6 +977,16 @@
       
       let html = '';
       
+      if (news.world?.length) {
+        html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">World</h3>';
+        html += news.world.slice(0, 3).map(item => 
+          `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--red);">
+            ${item.title}${item.age ? ' <span style="color: var(--text2); font-size: 0.75rem;">(' + item.age + ')</span>' : ''}
+          </div>`
+        ).join('');
+        html += '</div>';
+      }
+      
       if (news.crypto?.length) {
         html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">Crypto</h3>';
         html += news.crypto.slice(0, 3).map(item => 
@@ -988,19 +998,9 @@
       }
       
       if (news.kraken?.length) {
-        html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">Kraken</h3>';
+        html += '<div><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">Kraken</h3>';
         html += news.kraken.slice(0, 3).map(item => 
           `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--yellow);">
-            ${item.title}${item.age ? ' <span style="color: var(--text2); font-size: 0.75rem;">(' + item.age + ')</span>' : ''}
-          </div>`
-        ).join('');
-        html += '</div>';
-      }
-      
-      if (news.world?.length) {
-        html += '<div><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">World</h3>';
-        html += news.world.slice(0, 3).map(item => 
-          `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--red);">
             ${item.title}${item.age ? ' <span style="color: var(--text2); font-size: 0.75rem;">(' + item.age + ')</span>' : ''}
           </div>`
         ).join('');
