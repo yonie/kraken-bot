@@ -431,7 +431,16 @@ async function fetchGlobalMarketData() {
   }
   
   return new Promise((resolve) => {
-    https.get('https://api.coingecko.com/api/v3/global', (res) => {
+    const options = {
+      hostname: 'api.coingecko.com',
+      path: '/api/v3/global',
+      method: 'GET',
+      headers: {
+        'User-Agent': 'KrakenBot/2.0 (trading bot)'
+      }
+    };
+    
+    https.get(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
