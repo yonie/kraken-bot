@@ -941,9 +941,6 @@ ${ctx.recentLedgers.map(l => `[${l.timestamp}] ${l.type.toUpperCase()}: ${l.amou
 === PREVIOUS DECISIONS ===
 ${ctx.previousDecisions.map(d => `[${d.time}] ${d.sentiment}/${d.risk} | ${d.commands}`).join('\n') || 'None'}
 
-${ctx.insights && ctx.insights.length > 0 ? `=== LEARNED INSIGHTS ===
-${ctx.insights.slice(0, 10).map(i => `• ${i.insight}`).join('\n')}` : ''}
-
 === EXECUTION RESULTS ===
 ${ctx.recentExecutionResults.map(e => `[${e.time}] ${e.action} -> ${e.result}${e.error ? ` (${e.error})` : ''}`).join('\n') || 'None'}
 
@@ -953,7 +950,10 @@ RISK: [low/medium/high]
 
 ANALYSIS: [Your reasoning. Reference specific data.]
 
-INSIGHT: [Optional: One key learning or observation to remember for future decisions. Be concise - one sentence max. Only include if you have a genuine insight.]
+INSIGHT: [Optional: One pattern about YOUR trading behavior or portfolio (NOT market observations). Examples: "I tend to sell winners too early", "Low-volume assets have poor fills for me", "My ETH trades outperform my memecoin trades". Skip if nothing meaningful to add.]
+${ctx.insights && ctx.insights.length > 0 ? `
+EXISTING INSIGHTS (do not duplicate these):
+${ctx.insights.slice(0, 15).map(i => `• ${i.insight}`).join('\n')}` : ''}
 
 COMMANDS:
 [One command per line, or HOLD]
@@ -1050,12 +1050,30 @@ Note: BUY/SELL cancels existing orders for that asset first.
 }
 
 // ============================================
+// INIT CONTEXT (fetch on startup)
+// ============================================
+
+async function initContext() {
+  log('[AI] Fetching initial context (global market, news)...');
+  try {
+    await Promise.all([
+      fetchGlobalMarketData(),
+      fetchAllNews()
+    ]);
+    log('[AI] Initial context loaded');
+  } catch (e) {
+    console.error('[AI] Failed to load initial context:', e.message);
+  }
+}
+
+// ============================================
 // EXPORTS
 // ============================================
 
 module.exports = {
   init,
   runAnalysis,
+  initContext,
   setEnabled: (enabled) => { config.enabled = enabled; },
   setInterval: (minutes) => { config.intervalMinutes = minutes; }
 };

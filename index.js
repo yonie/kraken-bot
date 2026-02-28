@@ -79,6 +79,11 @@ async function init() {
   log('[INIT] Fetching market data...');
   await kraken.refreshAll();
   
+  // Fetch initial context (global market, news) for dashboard
+  if (canUseAI) {
+    await ai.initContext();
+  }
+  
   // Start HTTP/WebSocket server immediately
   server.start();
   
