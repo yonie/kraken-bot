@@ -901,7 +901,12 @@ Price: ${ctx.ethPrice ? ctx.ethPrice.toFixed(0) + ' EUR' : 'N/A'}
 ${ctx.ethOHLC?.length > 0 ? `7d close: ${ctx.ethOHLC.map(c => c.close.toFixed(0)).join(' -> ')}` : ''}
 
 === NEWS ===
-${formatNewsForPrompt(ctx.news)}
+[WORLD]
+${ctx.news.world?.items?.slice(0, 5).map(item => `  ${item.title}${item.age ? ` (${item.age})` : ''}`).join('\n') || '  No recent world news'}
+[CRYPTO]
+${ctx.news.crypto?.items?.slice(0, 5).map(item => `  ${item.title}${item.age ? ` (${item.age})` : ''}`).join('\n') || '  No recent crypto news'}
+[KRAKEN]
+${ctx.news.kraken?.items?.slice(0, 5).map(item => `  ${item.title}${item.age ? ` (${item.age})` : ''}`).join('\n') || '  No recent Kraken updates'}
 
 === PORTFOLIO ===
 Total: ${ctx.totalPortfolio} EUR | Cash: ${ctx.eurCash} EUR (${ctx.cashPct}%) | Invested: ${ctx.investedValue} EUR
