@@ -50,6 +50,7 @@ const state = {
   llmHistory: [],
   aiExecutionHistory: { executions: [], dailyCount: 0, lastResetDate: null },
   insights: [],           // Persistent learnings from LLM
+  questions: [],          // Data requests from LLM
   
   // News (memory only, not persisted)
   news: { crypto: [], kraken: [], world: [], lastUpdate: null },
@@ -71,7 +72,8 @@ const FILES = {
   llmHistory: path.join(DATA_DIR, 'llm_history.json'),
   aiExecutions: path.join(DATA_DIR, 'ai_executions.json'),
   balanceHistory: path.join(DATA_DIR, 'balance_history.json'),
-  insights: path.join(DATA_DIR, 'insights.json')
+  insights: path.join(DATA_DIR, 'insights.json'),
+  questions: path.join(DATA_DIR, 'questions.json')
 };
 
 function loadJSON(file, defaultValue = {}) {
@@ -101,6 +103,7 @@ function loadAllState() {
   state.llmHistory = loadJSON(FILES.llmHistory, []);
   state.aiExecutionHistory = loadJSON(FILES.aiExecutions, state.aiExecutionHistory);
   state.insights = loadJSON(FILES.insights, []);
+  state.questions = loadJSON(FILES.questions, []);
   
   // Load balance history with migration from old object format to new array format
   const loadedHistory = loadJSON(FILES.balanceHistory, []);
@@ -136,6 +139,7 @@ function saveLLMHistory() { saveJSON(FILES.llmHistory, state.llmHistory); }
 function saveAIExecutions() { saveJSON(FILES.aiExecutions, state.aiExecutionHistory); }
 function saveBalanceHistory() { saveJSON(FILES.balanceHistory, state.balanceHistory); }
 function saveInsights() { saveJSON(FILES.insights, state.insights); }
+function saveQuestions() { saveJSON(FILES.questions, state.questions); }
 
 /**
  * Record current balance snapshot for chart history
@@ -198,6 +202,7 @@ module.exports = {
   saveAIExecutions,
   saveBalanceHistory,
   saveInsights,
+  saveQuestions,
   recordBalanceSnapshot,
   
   // Logging

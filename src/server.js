@@ -77,6 +77,9 @@ function handleAPI(req, res, pathname, url) {
       case '/api/insights':
         return res.end(JSON.stringify(state.insights || []));
       
+      case '/api/questions':
+        return res.end(JSON.stringify(state.questions || []));
+      
       case '/api/ledgers':
         return res.end(JSON.stringify(state.ledgers || []));
       
