@@ -964,7 +964,7 @@ RISK: [low/medium/high]
 
 ANALYSIS: [Your reasoning. Reference specific data.]
 
-INSIGHT: [Optional: One pattern about YOUR trading behavior or portfolio (NOT market observations). Examples: "I tend to sell winners too early", "Low-volume assets have poor fills for me", "My ETH trades outperform my memecoin trades". Skip if nothing meaningful to add.]
+INSIGHT: [Optional: ONE short pattern about YOUR trading behavior (max 100 chars, NOT market observations). Examples: "I sell winners too early", "Low-volume = poor fills", "ETH trades outperform memes". Skip if nothing new.]
 ${ctx.insights && ctx.insights.length > 0 ? `
 EXISTING INSIGHTS (do not duplicate these):
 ${ctx.insights.slice(0, 15).map(i => `• ${i.insight}`).join('\n')}` : ''}
@@ -1014,9 +1014,9 @@ Note: BUY/SELL cancels existing orders for that asset first.
     // Store insight if provided
     if (insightMatch && insightMatch[1]) {
       const insightText = insightMatch[1].trim();
-      if (insightText && insightText.length > 10) {
+      if (insightText && insightText.length > 5) {
         state.insights.unshift({
-          insight: insightText.substring(0, 200),
+          insight: insightText,
           time: Date.now(),
           sentiment: state.llmAnalysis.marketSentiment
         });
@@ -1025,7 +1025,7 @@ Note: BUY/SELL cancels existing orders for that asset first.
           state.insights = state.insights.slice(0, 50);
         }
         saveInsights();
-        log(`[AI] New insight stored: ${insightText.substring(0, 50)}...`);
+        log(`[AI] New insight stored: ${insightText}`);
       }
     }
     
