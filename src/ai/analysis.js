@@ -262,7 +262,7 @@ RISK: [low/medium/high]
 
 ANALYSIS: [Your reasoning. Reference specific data.]
 
-INSIGHT: [Optional: ONE short pattern about YOUR trading behavior (max 100 chars, NOT market observations). Skip if nothing genuinely NEW - similar ideas to existing insights are NOT new.]
+INSIGHT: [Optional: ONE trading pattern observed from past behavior (max 80 chars). State as a pattern, NOT a market observation. Examples: "Selling winners too early", "Dip-buying without confirmation", "Position sizing too large". Skip if nothing genuinely NEW.]
 ${ctx.insights && ctx.insights.length > 0 ? `
 EXISTING INSIGHTS (do NOT repeat or slightly rephrase these):
 ${ctx.insights.slice(0, 15).map(i => `• ${i.insight}`).join('\n')}` : ''}
