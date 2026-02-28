@@ -657,6 +657,16 @@
         </div>
       </div>
       
+      <!-- Data Requests -->
+      <div class="card" data-card-id="questions" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Data Requests</h2>
+        </div>
+        <div class="card-content" id="questionsContent" style="max-height: 200px; overflow-y: auto;">
+          <div style="color: var(--text2); font-size: 0.9rem;">No data requests yet. The AI may request additional data it needs.</div>
+        </div>
+      </div>
+      
       <!-- Deposits/Withdrawals -->
       <div class="card" data-card-id="ledgers" draggable="true">
         <div class="card-header">
@@ -886,6 +896,7 @@
       updateMarketContext(data);
       updateNews(data.news);
       updateInsights(data.insights);
+      updateQuestions(data.questions);
       updateLedgers(data.ledgers);
       
       // Positions table
@@ -1030,6 +1041,29 @@
               <span style="color: var(--text2); font-size: 0.7rem;">${time}</span>
             </div>
             <div style="font-size: 0.85rem; line-height: 1.4;">${insight.insight}</div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    function updateQuestions(questions) {
+      const el = document.getElementById('questionsContent');
+      if (!el) return;
+      
+      if (!questions || questions.length === 0) {
+        el.innerHTML = '<div style="color: var(--text2); font-size: 0.9rem;">No data requests yet. The AI may request additional data it needs.</div>';
+        return;
+      }
+      
+      el.innerHTML = questions.slice(0, 10).map((q, i) => {
+        const time = q.time ? new Date(q.time).toLocaleString() : '';
+        return `
+          <div style="margin-bottom: 10px; padding: 8px; background: var(--bg); border-radius: 6px; border-left: 3px solid var(--accent);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="color: var(--accent); font-size: 0.7rem; font-weight: 600;">DATA REQUEST</span>
+              <span style="color: var(--text2); font-size: 0.7rem;">${time}</span>
+            </div>
+            <div style="font-size: 0.85rem; line-height: 1.4;">${q.request}</div>
           </div>
         `;
       }).join('');

@@ -416,6 +416,7 @@ function getFullState() {
     // AI
     analysis: state.llmAnalysis,
     insights: state.insights || [],
+    questions: state.questions || [],
     
     // News
     news: state.news || { crypto: [], kraken: [], world: [], lastUpdate: null },
