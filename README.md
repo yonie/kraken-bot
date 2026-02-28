@@ -15,6 +15,7 @@ An AI-powered cryptocurrency trading bot for [Kraken](https://www.kraken.com) ex
 - **Position Tracking** - Tracks cost basis, unrealized P&L, and holding duration
 - **Performance Analytics** - Win rate, realized P&L, and portfolio vs BTC comparison
 - **Market Sentiment** - Incorporates Fear & Greed index into trading decisions
+- **LLM Feedback Loop** - AI can request additional data it needs, stored for future development
 
 ## Requirements
 
@@ -62,6 +63,50 @@ An AI-powered cryptocurrency trading bot for [Kraken](https://www.kraken.com) ex
 | `PORT` | `8000` | Dashboard port |
 | `AI_ENABLED` | `true` | Enable/disable AI trading |
 | `ANALYSIS_INTERVAL_MINUTES` | `30` | How often AI analyzes |
+
+## Project Structure
+
+```
+src/
+├── index.js           # Entry point
+├── state.js           # State management & persistence
+├── news.js            # News fetching
+├── server.js          # HTTP/WebSocket server
+├── ai/                # AI/LLM module
+│   ├── index.js       # Re-exports
+│   ├── llm.js         # LLM provider calls
+│   ├── commands.js    # Command parsing & execution
+│   ├── context.js     # Context building for prompts
+│   └── analysis.js    # Analysis loop, insights, questions
+├── kraken/            # Kraken API module
+│   ├── index.js       # Re-exports
+│   ├── api.js         # Client & rate limiting
+│   ├── pairs.js       # Asset pair utilities
+│   ├── market.js      # Ticker, OHLC, depth, greed index
+│   ├── balance.js     # Balance, ledgers, positions
+│   ├── history.js     # Trade history
+│   └── orders.js      # Order placement
+└── server.js          # HTTP/WebSocket server
+```
+
+## Data Files
+
+The bot stores data in `data/`:
+- `insights.json` - AI-learned trading patterns
+- `questions.json` - AI data requests for future development
+- `llm_history.json` - Past AI decisions
+- `balance_history.json` - Portfolio value over time
+- `cost_basis.json` - Tax lot tracking
+
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/state` | Full bot state |
+| `GET /api/insights` | Stored insights |
+| `GET /api/questions` | AI data requests |
+| `POST /api/analyze` | Trigger AI analysis |
+| `POST /api/refresh` | Refresh market data |
 
 ## Known Issues
 
