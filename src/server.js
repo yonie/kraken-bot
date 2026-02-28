@@ -71,6 +71,15 @@ function handleAPI(req, res, pathname, url) {
       case '/api/balance-history':
         return res.end(JSON.stringify(state.balanceHistory || []));
       
+      case '/api/news':
+        return res.end(JSON.stringify(state.news || { crypto: [], kraken: [], world: [], lastUpdate: null }));
+      
+      case '/api/insights':
+        return res.end(JSON.stringify(state.insights || []));
+      
+      case '/api/ledgers':
+        return res.end(JSON.stringify(state.ledgers || []));
+      
       case '/api/asset-details': {
         const assetParam = url.searchParams.get('asset');
         if (!assetParam) {
@@ -388,11 +397,13 @@ function getFullState() {
     ticker: state.ticker,
     greedIndex: state.greedIndex,
     greedClass: state.greedClassification,
+    globalMarket: state.globalMarket,
     
     // Trading
     orders: state.orders,
     trades: state.trades.slice(0, 50),
     positions,
+    ledgers: state.ledgers || [],
     
     // Analytics
     analytics: state.tradeAnalytics.summary,
@@ -400,6 +411,10 @@ function getFullState() {
     
     // AI
     analysis: state.llmAnalysis,
+    insights: state.insights || [],
+    
+    // News
+    news: state.news || { crypto: [], kraken: [], world: [], lastUpdate: null },
     
     // Meta
     uptime: Math.floor((Date.now() - state.serverStartTime) / 1000),

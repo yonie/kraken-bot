@@ -592,6 +592,26 @@
     </div>
     
     <div class="grid" id="cardGrid">
+      <!-- Market Context -->
+      <div class="card" data-card-id="market" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Market Context</h2>
+        </div>
+        <div class="card-content" id="marketContent">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+      
+      <!-- News Headlines -->
+      <div class="card" data-card-id="news" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>News Headlines</h2>
+        </div>
+        <div class="card-content" id="newsContent" style="max-height: 300px; overflow-y: auto;">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+      
       <!-- AI Analysis -->
       <div class="card" data-card-id="analysis" draggable="true">
         <div class="card-header">
@@ -622,6 +642,33 @@
             </thead>
             <tbody id="positionsTable">
               <tr><td colspan="4" class="loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Learned Insights -->
+      <div class="card" data-card-id="insights" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Learned Insights</h2>
+        </div>
+        <div class="card-content" id="insightsContent" style="max-height: 250px; overflow-y: auto;">
+          <div style="color: var(--text2); font-size: 0.9rem;">No insights yet. Run analysis to generate insights.</div>
+        </div>
+      </div>
+      
+      <!-- Deposits/Withdrawals -->
+      <div class="card" data-card-id="ledgers" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Deposits/Withdrawals</h2>
+        </div>
+        <div class="card-content table-scroll">
+          <table>
+            <thead>
+              <tr><th>Type</th><th>Amount</th><th>When</th></tr>
+            </thead>
+            <tbody id="ledgersTable">
+              <tr><td colspan="3" style="color: var(--text2)">No recent deposits/withdrawals</td></tr>
             </tbody>
           </table>
         </div>
@@ -835,6 +882,12 @@
       document.getElementById('positions').textContent = 
         Object.keys(data.positions || {}).length;
       
+      // New cards
+      updateMarketContext(data);
+      updateNews(data.news);
+      updateInsights(data.insights);
+      updateLedgers(data.ledgers);
+      
       // Positions table
       updatePositions(data.positions);
       
@@ -852,6 +905,162 @@
       
       // Analysis
       if (data.analysis) updateAnalysis(data.analysis, true);
+    }
+    
+    function updateMarketContext(data) {
+      const el = document.getElementById('marketContent');
+      if (!el) return;
+      
+      const gm = data.globalMarket || {};
+      const now = new Date();
+      const utcHour = now.getUTCHours();
+      const isWeekend = now.getUTCDay() === 0 || now.getUTCDay() === 6;
+      let session = 'Unknown';
+      if (utcHour >= 0 && utcHour < 8) session = 'Asian';
+      else if (utcHour >= 8 && utcHour < 16) session = 'European';
+      else session = 'US';
+      
+      // Calculate market breadth from ticker
+      let up = 0, down = 0;
+      if (data.ticker) {
+        for (const [pair, t] of Object.entries(data.ticker)) {
+          const change = ((t.price - t.open) / t.open) * 100;
+          if (change > 0) up++;
+          else if (change < 0) down++;
+        }
+      }
+      
+      el.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+          <div class="detail-item">
+            <div class="detail-label">Market Cap</div>
+            <div class="detail-value">${gm.marketCap ? '$' + (gm.marketCap / 1e12).toFixed(2) + 'T' : '--'}</div>
+            <div style="font-size: 0.75rem; color: ${gm.marketCapChange24h >= 0 ? 'var(--green)' : 'var(--red)'};">
+              ${gm.marketCapChange24h ? (gm.marketCapChange24h >= 0 ? '+' : '') + gm.marketCapChange24h.toFixed(1) + '% 24h' : ''}
+            </div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">BTC Dominance</div>
+            <div class="detail-value">${gm.btcDominance ? gm.btcDominance.toFixed(1) + '%' : '--'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">24h Volume</div>
+            <div class="detail-value">${gm.volume24h ? '$' + (gm.volume24h / 1e9).toFixed(1) + 'B' : '--'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Market Breadth</div>
+            <div class="detail-value" style="font-size: 0.9rem;">
+              <span class="positive">${up}</span> / <span class="negative">${down}</span>
+            </div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Session</div>
+            <div class="detail-value">${session}${isWeekend ? ' (Weekend)' : ''}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Fear/Greed</div>
+            <div class="detail-value">${data.greedIndex || '--'}%</div>
+            <div style="font-size: 0.75rem; color: var(--text2);">${data.greedClass || '--'}</div>
+          </div>
+        </div>
+      `;
+    }
+    
+    function updateNews(news) {
+      const el = document.getElementById('newsContent');
+      if (!el) return;
+      
+      if (!news || (!news.crypto?.length && !news.kraken?.length && !news.world?.length)) {
+        el.innerHTML = '<div style="color: var(--text2); font-size: 0.9rem;">No news available. Run analysis to fetch headlines.</div>';
+        return;
+      }
+      
+      let html = '';
+      
+      if (news.crypto?.length) {
+        html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">Crypto</h3>';
+        html += news.crypto.slice(0, 3).map(item => 
+          `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--accent);">
+            ${item.title}${item.age ? ' <span style="color: var(--text2); font-size: 0.75rem;">(' + item.age + ')</span>' : ''}
+          </div>`
+        ).join('');
+        html += '</div>';
+      }
+      
+      if (news.kraken?.length) {
+        html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">Kraken</h3>';
+        html += news.kraken.slice(0, 3).map(item => 
+          `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--yellow);">
+            ${item.title}${item.age ? ' <span style="color: var(--text2); font-size: 0.75rem;">(' + item.age + ')</span>' : ''}
+          </div>`
+        ).join('');
+        html += '</div>';
+      }
+      
+      if (news.world?.length) {
+        html += '<div><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">World</h3>';
+        html += news.world.slice(0, 3).map(item => 
+          `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--red);">
+            ${item.title}${item.age ? ' <span style="color: var(--text2); font-size: 0.75rem;">(' + item.age + ')</span>' : ''}
+          </div>`
+        ).join('');
+        html += '</div>';
+      }
+      
+      el.innerHTML = html;
+    }
+    
+    function updateInsights(insights) {
+      const el = document.getElementById('insightsContent');
+      if (!el) return;
+      
+      if (!insights || insights.length === 0) {
+        el.innerHTML = '<div style="color: var(--text2); font-size: 0.9rem;">No insights yet. Run analysis to generate insights.</div>';
+        return;
+      }
+      
+      el.innerHTML = insights.slice(0, 10).map((insight, i) => {
+        const time = insight.time ? new Date(insight.time).toLocaleDateString() : '';
+        const sentiment = insight.sentiment || '';
+        const sentimentClass = sentiment === 'bullish' ? 'bullish' : sentiment === 'bearish' ? 'bearish' : 'neutral';
+        return `
+          <div style="margin-bottom: 10px; padding: 8px; background: var(--bg); border-radius: 6px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span class="tag ${sentimentClass}" style="font-size: 0.7rem;">${sentiment || 'insight'}</span>
+              <span style="color: var(--text2); font-size: 0.7rem;">${time}</span>
+            </div>
+            <div style="font-size: 0.85rem; line-height: 1.4;">${insight.insight}</div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    function updateLedgers(ledgers) {
+      const tbody = document.getElementById('ledgersTable');
+      if (!tbody) return;
+      
+      if (!ledgers || ledgers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="color: var(--text2)">No recent deposits/withdrawals</td></tr>';
+        return;
+      }
+      
+      tbody.innerHTML = ledgers.slice(0, 10).map(l => {
+        const isDeposit = l.type === 'deposit';
+        const asset = (l.asset || '').replace('Z', '');
+        const amount = l.amount ? l.amount.toFixed(asset === 'EUR' ? 2 : 6) : '--';
+        const d = l.time ? new Date(l.time * 1000) : new Date();
+        const diffMs = Date.now() - d.getTime();
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        const timeAgo = diffDays > 0 ? `${diffDays}d ago` : diffHours > 0 ? `${diffHours}h ago` : 'Just now';
+        return `
+          <tr>
+            <td class="${isDeposit ? 'positive' : 'negative'}">${isDeposit ? 'DEPOSIT' : 'WITHDRAW'}</td>
+            <td>${amount} ${asset}</td>
+            <td>${timeAgo}</td>
+          </tr>
+        `;
+      }).join('');
     }
     
     function updatePositions(positions) {
