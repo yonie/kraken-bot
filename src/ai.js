@@ -621,7 +621,8 @@ async function buildContext() {
           low24: ticker?.low24,
           high24: ticker?.high24,
           distFromLow: ticker?.distFromLow,
-          dayMove: ticker?.dayMove,
+          range24hPct: ticker?.range24hPct,
+          change24hPct: ticker?.change24hPct,
           volumeEur: ticker?.volumeEur,
           vwap: ticker?.vwap,
           trades24h: ticker?.trades24h
@@ -664,10 +665,10 @@ async function buildContext() {
     return parseFloat(b.value) - parseFloat(a.value);
   });
   
-  // Top movers
+  // Top movers (sorted by actual 24h price change)
   const movers = Object.entries(state.ticker)
     .map(([pair, t]) => ({ pair, ...t }))
-    .sort((a, b) => b.dayMove - a.dayMove)
+    .sort((a, b) => b.change24hPct - a.change24hPct)
     .slice(0, 20);
   
   // Recent trades - get all trades from last 7 days
@@ -863,7 +864,7 @@ async function runAnalysis(force = false) {
     let lines = [`${p.asset}: ${p.amount} tokens = ${p.value} EUR`];
     lines.push(`  P&L: ${p.pnl} EUR (${p.pnlPct}) | Held ${p.days}d | Entry: ${p.avgEntry}`);
     lines.push(`  Price: ${priceStr} | Bid: ${bidStr} | Ask: ${askStr} | Spread: ${t.spreadPct?.toFixed(2) || 'N/A'}%`);
-    lines.push(`  24h: ${lowStr}-${highStr} (${t.distFromLow || 0}% from low, ${t.dayMove || 0}% range) | VWAP: ${vwapStr} | Vol: ${t.volumeEur?.toFixed(0) || 'N/A'} EUR`);
+    lines.push(`  24h: ${lowStr}-${highStr} (${t.distFromLow || 0}% from low, ${t.range24hPct || 0}% range) | VWAP: ${vwapStr} | Vol: ${t.volumeEur?.toFixed(0) || 'N/A'} EUR`);
     
     if (p.ohlc && p.ohlc.length > 0) {
       lines.push(`  7d close: ${p.ohlc.join(' -> ')}`);
@@ -900,13 +901,13 @@ Market Breadth: ${ctx.marketBreadth.up} up / ${ctx.marketBreadth.down} down (${c
 
 === BTC ===
 Price: ${ctx.btcPrice ? ctx.btcPrice.toFixed(0) + ' EUR' : 'N/A'}
-24h Change: ${state.ticker['XXBTZEUR']?.dayMove || 0}% | Range: ${state.ticker['XXBTZEUR']?.low24?.toFixed(0) || 'N/A'}-${state.ticker['XXBTZEUR']?.high24?.toFixed(0) || 'N/A'} EUR
+24h Change: ${state.ticker['XXBTZEUR']?.change24hPct >= 0 ? '+' : ''}${state.ticker['XXBTZEUR']?.change24hPct || 0}% | Range: ${state.ticker['XXBTZEUR']?.low24?.toFixed(0) || 'N/A'}-${state.ticker['XXBTZEUR']?.high24?.toFixed(0) || 'N/A'} EUR (${state.ticker['XXBTZEUR']?.range24hPct || 0}%)
 ${ctx.btcOHLC?.length > 0 ? `7d close: ${ctx.btcOHLC.map(c => c.close.toFixed(0)).join(' -> ')}` : ''}
 ${btcDepthStr}
 
 === ETH ===
 Price: ${ctx.ethPrice ? ctx.ethPrice.toFixed(0) + ' EUR' : 'N/A'}
-24h Change: ${state.ticker['XETHZEUR']?.dayMove || 0}% | Range: ${state.ticker['XETHZEUR']?.low24?.toFixed(0) || 'N/A'}-${state.ticker['XETHZEUR']?.high24?.toFixed(0) || 'N/A'} EUR
+24h Change: ${state.ticker['XETHZEUR']?.change24hPct >= 0 ? '+' : ''}${state.ticker['XETHZEUR']?.change24hPct || 0}% | Range: ${state.ticker['XETHZEUR']?.low24?.toFixed(0) || 'N/A'}-${state.ticker['XETHZEUR']?.high24?.toFixed(0) || 'N/A'} EUR (${state.ticker['XETHZEUR']?.range24hPct || 0}%)
 ${ctx.ethOHLC?.length > 0 ? `7d close: ${ctx.ethOHLC.map(c => c.close.toFixed(0)).join(' -> ')}` : ''}
 
 === NEWS ===
@@ -937,13 +938,13 @@ ${ctx.openOrders.map(o => `[${o.id}] ${o.type?.toUpperCase()} ${o.asset}: ${o.vo
 ${ctx.topByVolume.slice(0, 20).map(m => {
   const p = m.price < 1 ? 6 : 2;
   const ohlc = ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close.toFixed(p)).join('->').substring(0, 50) : '';
-  return `${m.pair.replace(/Z?EUR$/, '')}: ${m.price?.toFixed(p)} | 24h: ${m.low24?.toFixed(p)}-${m.high24?.toFixed(p)} (${m.dayMove}%) | Vol: ${m.volumeEur?.toFixed(0) || 0} EUR${ohlc ? ` | 7d: ${ohlc}` : ''}`;
+  return `${m.pair.replace(/Z?EUR$/, '')}: ${m.price?.toFixed(p)} | 24h: ${m.low24?.toFixed(p)}-${m.high24?.toFixed(p)} (range ${m.range24hPct}%) | Vol: ${m.volumeEur?.toFixed(0) || 0} EUR${ohlc ? ` | 7d: ${ohlc}` : ''}`;
 }).join('\n')}
 
-=== TOP 10 MOVERS (24h) ===
+=== TOP 10 MOVERS (24h change) ===
 ${ctx.movers.slice(0, 10).map(m => {
   const p = m.price < 1 ? 6 : 2;
-  return `${m.pair.replace(/Z?EUR$/, '')}: ${m.price?.toFixed(p)} (${m.dayMove > 0 ? '+' : ''}${m.dayMove}%) | Vol: ${m.volumeEur?.toFixed(0) || 0} EUR`;
+  return `${m.pair.replace(/Z?EUR$/, '')}: ${m.price?.toFixed(p)} (${m.change24hPct >= 0 ? '+' : ''}${m.change24hPct}%) | Vol: ${m.volumeEur?.toFixed(0) || 0} EUR`;
 }).join('\n')}
 
 === RECENT TRADES (7d) ===

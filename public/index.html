@@ -1146,7 +1146,7 @@
       
       const movers = Object.entries(ticker)
         .map(([pair, t]) => ({ pair, ...t }))
-        .sort((a, b) => b.dayMove - a.dayMove);
+        .sort((a, b) => b.change24hPct - a.change24hPct);
       
       tbody.innerHTML = movers.map(m => {
         const asset = m.pair.replace(/Z?EUR$/, '').replace(/^X+/, '');
@@ -1154,7 +1154,7 @@
           <tr>
             <td><span class="asset-link" onclick="showAssetDetails('${asset}')">${m.pair.replace('EUR', '').replace(/^X+/, '')}</span></td>
             <td>${m.price < 1 ? m.price.toFixed(6) : m.price.toFixed(2)}</td>
-            <td>${m.dayMove}%</td>
+            <td>${m.change24hPct >= 0 ? '+' : ''}${m.change24hPct}%</td>
             <td class="${m.distFromLow < 30 ? 'positive' : m.distFromLow > 70 ? 'negative' : ''}">${m.distFromLow}%</td>
           </tr>
         `;
@@ -1718,12 +1718,12 @@
       if (t) {
         html += `
           <div class="detail-item">
-            <div class="detail-label">24h Range</div>
-            <div class="detail-value">${t.distFromLow}% from low</div>
+            <div class="detail-label">24h Change</div>
+            <div class="detail-value">${t.change24hPct >= 0 ? '+' : ''}${t.change24hPct}%</div>
           </div>
           <div class="detail-item">
-            <div class="detail-label">24h Move</div>
-            <div class="detail-value">${t.dayMove}%</div>
+            <div class="detail-label">24h Range</div>
+            <div class="detail-value">${t.range24hPct}%</div>
           </div>
           <div class="detail-item">
             <div class="detail-label">Spread</div>

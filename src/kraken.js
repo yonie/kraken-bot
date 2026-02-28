@@ -168,7 +168,9 @@ async function fetchTicker() {
         const high24 = parseFloat(t.h[1]);
         const range = high24 - low24;
         const distFromLow = range > 0 ? Math.round(((price - low24) / range) * 100) : 0;
-        const dayMove = low24 > 0 ? Math.round((range / low24) * 100) : 0;
+        const range24hPct = low24 > 0 ? Math.round((range / low24) * 100) : 0;
+        const openPrice = parseFloat(t.o);
+        const change24hPct = openPrice > 0 ? Math.round(((price - openPrice) / openPrice) * 100) : 0;
         
         // Parse bid/ask data
         const askPrice = parseFloat(t.a[0]);
@@ -195,7 +197,8 @@ async function fetchTicker() {
           lowToday: parseFloat(t.l[0]),
           highToday: parseFloat(t.h[0]),
           distFromLow,
-          dayMove,
+          range24hPct,
+          change24hPct,
           // Volume (base asset)
           volume: parseFloat(t.v[1]),
           volumeToday: parseFloat(t.v[0]),
@@ -208,10 +211,9 @@ async function fetchTicker() {
           // Trade counts
           trades24h: t.t[1],
           tradesToday: t.t[0],
-          // Opening price
           open: parseFloat(t.o),
           // Computed
-          display: `${price.toFixed(price < 1 ? 6 : 2)} (${distFromLow}%/${dayMove}%)`
+          display: `${price.toFixed(price < 1 ? 6 : 2)} (${change24hPct >= 0 ? '+' : ''}${change24hPct}%, ${distFromLow}%-${100-distFromLow}%)`
         };
       }
       
