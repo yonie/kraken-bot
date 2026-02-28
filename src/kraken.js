@@ -283,6 +283,45 @@ async function fetchOrders(retries = 2) {
   });
 }
 
+async function fetchLedgers(days = 7) {
+  await waitForRateLimit(2);
+  return new Promise((resolve) => {
+    const start = Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000);
+    
+    kraken.api('Ledgers', { start }, (error, data) => {
+      if (error) {
+        console.error('[KRAKEN] Ledgers error:', error.message);
+        return resolve([]);
+      }
+      
+      const ledgers = [];
+      const rawLedger = data.result?.ledger || data.result || {};
+      
+      for (const [id, entry] of Object.entries(rawLedger)) {
+        // Only include deposits and withdrawals
+        const type = entry.type?.toLowerCase();
+        if (type !== 'deposit' && type !== 'withdrawal') continue;
+        
+        ledgers.push({
+          id,
+          type: entry.type,
+          asset: entry.asset,
+          amount: parseFloat(entry.amount),
+          fee: parseFloat(entry.fee),
+          time: entry.time,
+          refid: entry.refid,
+          timestamp: new Date(entry.time * 1000).toLocaleString()
+        });
+      }
+      
+      // Sort by time descending
+      ledgers.sort((a, b) => b.time - a.time);
+      state.ledgers = ledgers;
+      resolve(ledgers);
+    });
+  });
+}
+
 // Populate state.trades from cached fullTradeHistory (no API call)
 function updateRecentTrades(count = 200) {
   state.trades = Object.entries(state.fullTradeHistory.trades)
@@ -763,6 +802,170 @@ async function fetchGreedIndex() {
 }
 
 // ============================================
+// OHLC DATA (Public API)
+// ============================================
+
+async function fetchOHLC(pair, interval = 1440) {
+  return new Promise((resolve) => {
+    const krakenPair = pair.startsWith('X') || pair.endsWith('EUR') ? pair : findPairForAsset(pair);
+    if (!krakenPair) return resolve(null);
+    
+    const url = `https://api.kraken.com/0/public/OHLC?pair=${krakenPair}&interval=${interval}`;
+    
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.error && json.error.length > 0) {
+            return resolve(null);
+          }
+          
+          const result = json.result;
+          const pairKey = Object.keys(result)[0];
+          const ohlcData = result[pairKey];
+          
+          if (!ohlcData || ohlcData.length === 0) {
+            return resolve(null);
+          }
+          
+          const candles = ohlcData.slice(-7).map(c => ({
+            time: parseInt(c[0]) * 1000,
+            open: parseFloat(c[1]),
+            high: parseFloat(c[2]),
+            low: parseFloat(c[3]),
+            close: parseFloat(c[4]),
+            vwap: parseFloat(c[5]),
+            volume: parseFloat(c[6])
+          }));
+          
+          resolve(candles);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }).on('error', () => resolve(null));
+  });
+}
+
+async function fetchOHLCForPairs(pairs) {
+  const results = {};
+  
+  for (const pair of pairs) {
+    try {
+      const ohlc = await fetchOHLC(pair);
+      if (ohlc) {
+        results[pair] = ohlc;
+      }
+      await new Promise(r => setTimeout(r, 200));
+    } catch (e) {
+      // Continue on error
+    }
+  }
+  
+  return results;
+}
+
+// ============================================
+// ORDER BOOK DEPTH (Public API)
+// ============================================
+
+async function fetchDepth(pair, count = 20) {
+  return new Promise((resolve) => {
+    const krakenPair = pair.startsWith('X') || pair.endsWith('EUR') ? pair : findPairForAsset(pair);
+    if (!krakenPair) return resolve(null);
+    
+    const url = `https://api.kraken.com/0/public/Depth?pair=${krakenPair}&count=${count}`;
+    
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.error && json.error.length > 0) {
+            return resolve(null);
+          }
+          
+          const result = json.result;
+          const pairKey = Object.keys(result)[0];
+          const depth = result[pairKey];
+          
+          if (!depth) {
+            return resolve(null);
+          }
+          
+          const bids = (depth.bids || []).map(b => ({
+            price: parseFloat(b[0]),
+            volume: parseFloat(b[1]),
+            timestamp: parseInt(b[2])
+          }));
+          
+          const asks = (depth.asks || []).map(a => ({
+            price: parseFloat(a[0]),
+            volume: parseFloat(a[1]),
+            timestamp: parseInt(a[2])
+          }));
+          
+          const currentPrice = bids.length > 0 ? bids[0].price : (asks.length > 0 ? asks[0].price : 0);
+          
+          let bidDepth5pct = 0;
+          let askDepth5pct = 0;
+          const targetPrice = currentPrice * 0.05;
+          
+          for (const b of bids) {
+            if (currentPrice - b.price <= targetPrice) {
+              bidDepth5pct += b.volume * b.price;
+            }
+          }
+          for (const a of asks) {
+            if (a.price - currentPrice <= targetPrice) {
+              askDepth5pct += a.volume * a.price;
+            }
+          }
+          
+          const bidWalls = bids.slice(0, 10).sort((a, b) => b.volume - a.volume).slice(0, 3)
+            .map(w => ({ price: w.price, volume: w.volume }));
+          const askWalls = asks.slice(0, 10).sort((a, b) => b.volume - a.volume).slice(0, 3)
+            .map(w => ({ price: w.price, volume: w.volume }));
+          
+          resolve({
+            bids,
+            asks,
+            bidDepth5pct,
+            askDepth5pct,
+            bidWalls,
+            askWalls,
+            spread: asks.length > 0 && bids.length > 0 ? asks[0].price - bids[0].price : 0
+          });
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }).on('error', () => resolve(null));
+  });
+}
+
+async function fetchDepthForPairs(pairs) {
+  const results = {};
+  
+  for (const pair of pairs) {
+    try {
+      const depth = await fetchDepth(pair);
+      if (depth) {
+        results[pair] = depth;
+      }
+      await new Promise(r => setTimeout(r, 150));
+    } catch (e) {
+      // Continue on error
+    }
+  }
+  
+  return results;
+}
+
+// ============================================
 // REFRESH ALL
 // ============================================
 
@@ -775,6 +978,13 @@ async function refreshAll() {
   await fetchBalance();    // +1
   await fetchOrders();     // +1
   await fetchNewTrades();  // +2 (only fetches new trades, stops at known ones)
+  
+  // Fetch ledgers (deposits/withdrawals) - only every 30 minutes to save rate limit
+  const lastLedgerFetch = state._lastLedgerFetch || 0;
+  if (Date.now() - lastLedgerFetch > 30 * 60 * 1000) {
+    await fetchLedgers(7);  // +2, fetch last 7 days
+    state._lastLedgerFetch = Date.now();
+  }
 }
 
 // ============================================
@@ -789,10 +999,17 @@ module.exports = {
   fetchTicker,
   fetchBalance,
   fetchOrders,
+  fetchLedgers,
   fetchAllTradeHistory,
   fetchNewTrades,
   fetchGreedIndex,
   refreshAll,
+  
+  // OHLC & Depth
+  fetchOHLC,
+  fetchOHLCForPairs,
+  fetchDepth,
+  fetchDepthForPairs,
   
   // Helpers
   findPairForAsset,

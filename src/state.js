@@ -27,10 +27,12 @@ const state = {
   orders: {},             // Open orders
   trades: [],             // Recent trades
   tradeBalance: 0,        // Total EUR balance
+  ledgers: [],            // Recent deposits/withdrawals
   
   // Market data
   greedIndex: null,
   greedClassification: null,
+  globalMarket: null,     // CoinGecko global data { marketCap, btcDominance, volume24h, lastFetch }
   
   // Balance history for charts (7-day portfolio tracking)
   balanceHistory: [],     // Array of { timestamp, balanceEUR, balanceBTC, btcPrice }
@@ -47,6 +49,10 @@ const state = {
   llmAnalysis: { lastUpdate: null, marketSentiment: null, analysis: null, commands: null, raw: null },
   llmHistory: [],
   aiExecutionHistory: { executions: [], dailyCount: 0, lastResetDate: null },
+  insights: [],           // Persistent learnings from LLM
+  
+  // News (memory only, not persisted)
+  news: { crypto: [], kraken: [], world: [], lastUpdate: null },
   
   // Server state
   logs: [],
@@ -64,7 +70,8 @@ const FILES = {
   llmAnalysis: path.join(DATA_DIR, 'llm_analysis.json'),
   llmHistory: path.join(DATA_DIR, 'llm_history.json'),
   aiExecutions: path.join(DATA_DIR, 'ai_executions.json'),
-  balanceHistory: path.join(DATA_DIR, 'balance_history.json')
+  balanceHistory: path.join(DATA_DIR, 'balance_history.json'),
+  insights: path.join(DATA_DIR, 'insights.json')
 };
 
 function loadJSON(file, defaultValue = {}) {
@@ -93,6 +100,7 @@ function loadAllState() {
   state.llmAnalysis = loadJSON(FILES.llmAnalysis, state.llmAnalysis);
   state.llmHistory = loadJSON(FILES.llmHistory, []);
   state.aiExecutionHistory = loadJSON(FILES.aiExecutions, state.aiExecutionHistory);
+  state.insights = loadJSON(FILES.insights, []);
   
   // Load balance history with migration from old object format to new array format
   const loadedHistory = loadJSON(FILES.balanceHistory, []);
@@ -127,6 +135,7 @@ function saveLLMAnalysis() { saveJSON(FILES.llmAnalysis, state.llmAnalysis); }
 function saveLLMHistory() { saveJSON(FILES.llmHistory, state.llmHistory); }
 function saveAIExecutions() { saveJSON(FILES.aiExecutions, state.aiExecutionHistory); }
 function saveBalanceHistory() { saveJSON(FILES.balanceHistory, state.balanceHistory); }
+function saveInsights() { saveJSON(FILES.insights, state.insights); }
 
 /**
  * Record current balance snapshot for chart history
@@ -188,6 +197,7 @@ module.exports = {
   saveLLMHistory,
   saveAIExecutions,
   saveBalanceHistory,
+  saveInsights,
   recordBalanceSnapshot,
   
   // Logging

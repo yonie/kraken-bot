@@ -26,7 +26,7 @@ const config = {
   ollamaPort: parseInt(process.env.OLLAMA_PORT) || 11434,
   port: process.env.PORT || 8000,
   aiEnabled: process.env.AI_ENABLED !== 'false',
-  analysisIntervalMinutes: parseFloat(process.env.ANALYSIS_INTERVAL_MINUTES) || 30,
+  analysisIntervalMinutes: parseFloat(process.env.ANALYSIS_INTERVAL_MINUTES) || 10,
   countryCode: process.env.COUNTRY_CODE || null
 };
 

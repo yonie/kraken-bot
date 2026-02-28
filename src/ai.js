@@ -8,8 +8,9 @@ const https = require('https');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
-const { state, log, saveLLMAnalysis, saveLLMHistory, saveAIExecutions, DATA_DIR } = require('./state');
+const { state, log, saveLLMAnalysis, saveLLMHistory, saveAIExecutions, saveInsights, DATA_DIR } = require('./state');
 const kraken = require('./kraken');
+const { fetchAllNews, formatNewsForPrompt } = require('./news');
 
 let config = {
   provider: 'openrouter',
@@ -18,7 +19,7 @@ let config = {
   ollamaHost: 'localhost',
   ollamaPort: 11434,
   enabled: true,
-  intervalMinutes: 30
+  intervalMinutes: 10
 };
 
 // ============================================
@@ -419,7 +420,107 @@ function cleanAssetName(asset) {
   return asset;
 }
 
-function buildContext() {
+// Fetch global market data from CoinGecko (with simple debounce)
+let lastGlobalMarketFetch = 0;
+const GLOBAL_MARKET_CACHE_TTL = 30000; // 30 seconds
+
+async function fetchGlobalMarketData() {
+  const now = Date.now();
+  if (state.globalMarket && (now - lastGlobalMarketFetch) < GLOBAL_MARKET_CACHE_TTL) {
+    return state.globalMarket;
+  }
+  
+  return new Promise((resolve) => {
+    https.get('https://api.coingecko.com/api/v3/global', (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.data) {
+            state.globalMarket = {
+              marketCap: json.data.total_market_cap?.usd,
+              marketCapChange24h: json.data.market_cap_change_percentage_24h_usd,
+              btcDominance: json.data.market_cap_percentage?.btc,
+              ethDominance: json.data.market_cap_percentage?.eth,
+              volume24h: json.data.total_volume?.usd,
+              lastFetch: now
+            };
+            lastGlobalMarketFetch = now;
+          }
+          resolve(state.globalMarket);
+        } catch (e) {
+          resolve(state.globalMarket);
+        }
+      });
+    }).on('error', () => resolve(state.globalMarket));
+  });
+}
+
+// Compute per-asset performance from trade history
+function computeAssetPerformance() {
+  const assetStats = {};
+  const now = Date.now();
+  const thirtyDaysAgo = now / 1000 - (30 * 24 * 60 * 60);
+  
+  if (!state.fullTradeHistory?.trades) return assetStats;
+  
+  for (const [id, trade] of Object.entries(state.fullTradeHistory.trades)) {
+    if (trade.time < thirtyDaysAgo) continue;
+    
+    const pair = trade.pair || '';
+    const asset = pair.replace(/Z?EUR$/, '').replace(/^X+/, '');
+    if (!asset || asset === 'EUR') continue;
+    
+    if (!assetStats[asset]) {
+      assetStats[asset] = { trades: 0, wins: 0, losses: 0, totalPnL: 0, totalWin: 0, totalLoss: 0, bestWin: 0, worstLoss: 0 };
+    }
+    
+    const pnl = parseFloat(trade.pnl || 0);
+    assetStats[asset].trades++;
+    
+    if (pnl > 0) {
+      assetStats[asset].wins++;
+      assetStats[asset].totalWin += pnl;
+      if (pnl > assetStats[asset].bestWin) assetStats[asset].bestWin = pnl;
+    } else if (pnl < 0) {
+      assetStats[asset].losses++;
+      assetStats[asset].totalLoss += Math.abs(pnl);
+      if (Math.abs(pnl) > assetStats[asset].worstLoss) assetStats[asset].worstLoss = Math.abs(pnl);
+    }
+  }
+  
+  // Compute derived stats
+  for (const asset in assetStats) {
+    const s = assetStats[asset];
+    s.winRate = s.trades > 0 ? ((s.wins / s.trades) * 100).toFixed(0) : 0;
+    s.avgWin = s.wins > 0 ? (s.totalWin / s.wins).toFixed(0) : 0;
+    s.avgLoss = s.losses > 0 ? (s.totalLoss / s.losses).toFixed(0) : 0;
+    s.totalPnL = s.totalWin - s.totalLoss;
+  }
+  
+  return assetStats;
+}
+
+// Get session info
+function getSessionInfo() {
+  const now = new Date();
+  const utcHour = now.getUTCHours();
+  const isWeekend = now.getUTCDay() === 0 || now.getUTCDay() === 6;
+  
+  let session = 'Unknown';
+  if (utcHour >= 0 && utcHour < 8) session = 'Asian';
+  else if (utcHour >= 8 && utcHour < 16) session = 'European';
+  else session = 'US';
+  
+  return {
+    utcTime: now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC',
+    session,
+    isWeekend
+  };
+}
+
+async function buildContext() {
   const enriched = kraken.getEnrichedPositions();
   const minValue = 1.0;
   
@@ -428,71 +529,136 @@ function buildContext() {
   const totalPortfolio = state.tradeBalance;
   const investedValue = totalPortfolio - eurCash;
   
+  // Fetch additional data in parallel
+  const [globalMarket, news, sessionInfo, assetPerformance] = await Promise.all([
+    fetchGlobalMarketData(),
+    fetchAllNews(),
+    Promise.resolve(getSessionInfo()),
+    Promise.resolve(computeAssetPerformance())
+  ]);
+  
+  // Store news in state for dashboard (memory only)
+  if (news) {
+    state.news = {
+      crypto: news.crypto?.items || [],
+      kraken: news.kraken?.items || [],
+      world: news.world?.items || [],
+      lastUpdate: Date.now()
+    };
+  }
+  
+  // Determine pairs for OHLC: positions + top 20 by volume
+  const positionPairs = new Set();
+  for (const asset in enriched) {
+    const pair = kraken.findPairForAsset(asset);
+    if (pair) positionPairs.add(pair);
+  }
+  
+  const topByVolume = Object.entries(state.ticker)
+    .map(([pair, t]) => ({ pair, ...t }))
+    .sort((a, b) => (b.volumeEur || 0) - (a.volumeEur || 0))
+    .slice(0, 20);
+  
+  for (const t of topByVolume) {
+    positionPairs.add(t.pair);
+  }
+  
+  // Fetch OHLC for all relevant pairs
+  const ohlcData = await kraken.fetchOHLCForPairs([...positionPairs]);
+  
+  // Fetch depth for positions only
+  const positionPairsArray = [...positionPairs].filter(p => {
+    const asset = p.replace(/Z?EUR$/, '').replace(/^X+/, '');
+    return enriched[asset] || enriched['X' + asset] || enriched['XX' + asset];
+  });
+  const depthData = await kraken.fetchDepthForPairs(
+    Object.keys(enriched).map(a => kraken.findPairForAsset(a)).filter(Boolean)
+  );
+  
+  // Build market breadth
+  let assetsUp = 0;
+  let assetsDown = 0;
+  for (const [pair, t] of Object.entries(state.ticker)) {
+    const change = ((t.price - t.open) / t.open) * 100;
+    if (change > 0) assetsUp++;
+    else if (change < 0) assetsDown++;
+  }
+  const marketBreadth = { up: assetsUp, down: assetsDown, total: assetsUp + assetsDown };
+  
   // Build positions list with ticker data for each holding
   const positions = [];
   for (const asset in enriched) {
     const p = enriched[asset];
     if (p.currentValue >= minValue) {
-      // Find ticker for this asset
       const pair = kraken.findPairForAsset(asset);
       const ticker = pair ? state.ticker[pair] : null;
+      const ohlc = ohlcData[pair] || [];
+      const depth = depthData[pair] || null;
+      const perf = assetPerformance[cleanAssetName(asset)] || null;
       
       positions.push({
         asset: cleanAssetName(asset),
+        amount: p.amount,
         value: p.currentValue.toFixed(2),
         pnl: p.unrealizedPnL.toFixed(2),
         pnlPct: p.unrealizedPct.toFixed(1) + '%',
         days: p.holdingDays,
         avgEntry: p.avgCost?.toFixed(6) || 'N/A',
-        // Ticker data for this holding
-        price: ticker?.price?.toFixed(ticker.price < 1 ? 6 : 2) || 'N/A',
-        // Bid/Ask for optimal order placement
-        bid: ticker?.bid?.toFixed(ticker.bid < 1 ? 6 : 2) || 'N/A',
-        ask: ticker?.ask?.toFixed(ticker.ask < 1 ? 6 : 2) || 'N/A',
-        spread: ticker?.spreadPct?.toFixed(2) + '%' || 'N/A',
-        // 24h range
-        low24: ticker?.low24?.toFixed(ticker.low24 < 1 ? 6 : 2) || 'N/A',
-        high24: ticker?.high24?.toFixed(ticker.high24 < 1 ? 6 : 2) || 'N/A',
-        distFromLow: ticker?.distFromLow || 0,
-        dayMove: ticker?.dayMove || 0,
-        // Volume and activity (EUR value traded)
-        volume24: ticker?.volumeEur?.toFixed(0) || 'N/A',
-        vwap: ticker?.vwap?.toFixed(ticker.vwap < 1 ? 6 : 2) || 'N/A',
-        trades24h: ticker?.trades24h || 0
+        ticker: {
+          price: ticker?.price,
+          bid: ticker?.bid,
+          ask: ticker?.ask,
+          spreadPct: ticker?.spreadPct,
+          low24: ticker?.low24,
+          high24: ticker?.high24,
+          distFromLow: ticker?.distFromLow,
+          dayMove: ticker?.dayMove,
+          volumeEur: ticker?.volumeEur,
+          vwap: ticker?.vwap,
+          trades24h: ticker?.trades24h
+        },
+        ohlc: ohlc.map(c => c.close.toFixed(c.close < 1 ? 6 : 2)),
+        depth: depth ? {
+          bidDepth5pct: depth.bidDepth5pct,
+          askDepth5pct: depth.askDepth5pct,
+          bidWalls: depth.bidWalls,
+          askWalls: depth.askWalls,
+          spread: depth.spread
+        } : null,
+        performance: perf
       });
     }
   }
   
-  // Build holdings list (all assets including EUR)
-  const holdings = [];
-  for (const asset in state.wallet) {
-    const w = state.wallet[asset];
-    if (w.value >= minValue || (asset === 'ZEUR' && w.amount >= 0.01)) {
-      holdings.push({
-        asset: asset === 'ZEUR' ? 'EUR (cash)' : cleanAssetName(asset),
-        amount: w.amount.toFixed(asset === 'ZEUR' ? 2 : 6),
-        value: w.value.toFixed(2),
-        pctOfPortfolio: totalPortfolio > 0 ? ((w.value / totalPortfolio) * 100).toFixed(1) : '0'
-      });
-    }
+  // Add EUR as a position entry
+  if (eurCash >= 0.01) {
+    positions.unshift({
+      asset: 'EUR',
+      amount: eurCash.toFixed(2),
+      value: eurCash.toFixed(2),
+      pnl: '0',
+      pnlPct: '0%',
+      days: 0,
+      avgEntry: 'N/A',
+      ticker: null,
+      ohlc: [],
+      depth: null,
+      performance: null,
+      isCash: true
+    });
   }
-  // Sort holdings by value descending, but keep EUR at top
-  holdings.sort((a, b) => {
-    if (a.asset === 'EUR (cash)') return -1;
-    if (b.asset === 'EUR (cash)') return 1;
+  
+  // Sort positions by value (EUR stays at top)
+  positions.sort((a, b) => {
+    if (a.isCash) return -1;
+    if (b.isCash) return 1;
     return parseFloat(b.value) - parseFloat(a.value);
   });
   
-  // Top movers - get more of them (20)
+  // Top movers
   const movers = Object.entries(state.ticker)
     .map(([pair, t]) => ({ pair, ...t }))
     .sort((a, b) => b.dayMove - a.dayMove)
-    .slice(0, 20);
-  
-  // Top 20 by volume (EUR value traded in 24h)
-  const topByVolume = Object.entries(state.ticker)
-    .map(([pair, t]) => ({ pair, ...t }))
-    .sort((a, b) => (b.volumeEur || 0) - (a.volumeEur || 0))
     .slice(0, 20);
   
   // Recent trades - get all trades from last 7 days
@@ -508,9 +674,9 @@ function buildContext() {
       time: new Date(t.time * 1000).toLocaleString()
     }));
   
-  // Open orders with more detail - include order ID for cancellation
+  // Open orders
   const openOrders = Object.entries(state.orders).map(([id, o]) => ({
-    id,  // Order ID for CANCEL command
+    id,
     type: o.descr?.type,
     pair: o.descr?.pair,
     asset: cleanAssetName(o.descr?.pair?.replace(/Z?EUR$/, '')) || 'UNKNOWN',
@@ -521,17 +687,17 @@ function buildContext() {
     created: new Date(o.opentm * 1000).toLocaleString()
   }));
   
-  // Previous decisions - get last 15 for better context
-  const previousDecisions = state.llmHistory.slice(0, 15).map(h => ({
+  // Previous decisions - last 5 only
+  const previousDecisions = state.llmHistory.slice(0, 5).map(h => ({
     time: new Date(h.lastUpdate).toLocaleString(),
     sentiment: h.marketSentiment,
     risk: h.riskAssessment,
     commands: h.commands || 'HOLD',
-    analysis: h.analysis?.substring(0) || '' 
+    analysis: h.analysis?.substring(0, 200) || '' 
   }));
   
-  // Recent execution results - show last failures per unique action to avoid clutter
-  const recentExecutions = state.aiExecutionHistory.executions.slice(-20).reverse();
+  // Recent execution results
+  const recentExecutions = state.aiExecutionHistory.executions.slice(-10).reverse();
   const seenKeys = new Set();
   const recentExecutionResults = [];
   for (const e of recentExecutions) {
@@ -545,7 +711,6 @@ function buildContext() {
         time: new Date(e.timestamp).toLocaleString()
       });
     }
-    if (recentExecutionResults.length >= 10) break;
   }
   recentExecutionResults.reverse();
   
@@ -556,20 +721,17 @@ function buildContext() {
   const unrealizedPnL = positions.reduce((sum, p) => sum + parseFloat(p.pnl), 0);
   const cashPct = totalPortfolio > 0 ? ((eurCash / totalPortfolio) * 100).toFixed(1) : '0';
   
-  // Portfolio value history - sample daily snapshots from the last 7 days
+  // Portfolio value history
   const balanceHistory = [];
   if (state.balanceHistory.length > 0) {
     const now = Date.now();
-    // Get one snapshot per day for the last 7 days
     for (let daysAgo = 6; daysAgo >= 0; daysAgo--) {
       const targetTime = now - (daysAgo * 24 * 60 * 60 * 1000);
-      const dayStart = targetTime - (12 * 60 * 60 * 1000); // 12h window
+      const dayStart = targetTime - (12 * 60 * 60 * 1000);
       const dayEnd = targetTime + (12 * 60 * 60 * 1000);
       
-      // Find closest snapshot to this day
       const daySnapshots = state.balanceHistory.filter(s => s.timestamp >= dayStart && s.timestamp <= dayEnd);
       if (daySnapshots.length > 0) {
-        // Pick the one closest to target time
         const closest = daySnapshots.reduce((a, b) => 
           Math.abs(a.timestamp - targetTime) < Math.abs(b.timestamp - targetTime) ? a : b
         );
@@ -602,28 +764,52 @@ function buildContext() {
     }
   }
   
+  // BTC and ETH OHLC for market overview
+  const btcOHLC = ohlcData['XXBTZEUR'] || [];
+  const ethOHLC = ohlcData['XETHZEUR'] || [];
+  
+  // Recent deposits/withdrawals
+  const recentLedgers = state.ledgers.slice(0, 10);
+  
   return {
+    // Session
+    sessionInfo,
+    // Global market
+    globalMarket,
+    marketBreadth,
+    // Market data
+    greedIndex: state.greedIndex,
+    greedClass: state.greedClassification,
+    btcPrice: state.ticker['XXBTZEUR']?.price,
+    ethPrice: state.ticker['XETHZEUR']?.price,
+    btcOHLC,
+    ethOHLC,
+    btcDepth: depthData['XXBTZEUR'] || null,
+    ethDepth: depthData['XETHZEUR'] || null,
+    ohlcData,
+    // News
+    news,
     // Portfolio breakdown
     totalPortfolio: totalPortfolio.toFixed(2),
     eurCash: eurCash.toFixed(2),
     investedValue: investedValue.toFixed(2),
     cashPct,
     unrealizedPnL: unrealizedPnL.toFixed(2),
-    // Market data
-    greedIndex: state.greedIndex,
-    greedClass: state.greedClassification,
-    btcPrice: state.ticker['XXBTZEUR']?.price?.toFixed(0) || 'N/A',
-    ethPrice: state.ticker['XETHZEUR']?.price?.toFixed(0) || 'N/A',
-    // Lists
+    // Positions with all data
     positions,
-    holdings,
+    // Market data
     movers,
     topByVolume,
+    // Trade data
     recentTrades,
+    recentLedgers,
     openOrders,
     previousDecisions,
     recentExecutionResults,
     analytics,
+    assetPerformance,
+    // Insights
+    insights: state.insights.slice(0, 20),
     // Portfolio history
     balanceHistory,
     weekChangeEUR,
@@ -645,96 +831,140 @@ async function runAnalysis(force = false) {
   // Refresh data first
   await kraken.refreshAll();
   
-  const ctx = buildContext();
+  const ctx = await buildContext();
   
   if (!ctx.totalPortfolio || !ctx.greedIndex) {
     return { skipped: true, reason: 'insufficient_data' };
   }
   
-  const prompt = `You are an autonomous crypto trading bot. Response under 600 words.
+  // Format positions for prompt
+  const formatPosition = (p) => {
+    if (p.isCash) {
+      return `${p.asset}: ${p.amount} EUR (${p.value} EUR total)`;
+    }
+    
+    const t = p.ticker || {};
+    const priceStr = t.price ? (t.price < 1 ? t.price.toFixed(6) : t.price.toFixed(2)) : 'N/A';
+    const bidStr = t.bid ? (t.bid < 1 ? t.bid.toFixed(6) : t.bid.toFixed(2)) : 'N/A';
+    const askStr = t.ask ? (t.ask < 1 ? t.ask.toFixed(6) : t.ask.toFixed(2)) : 'N/A';
+    const lowStr = t.low24 ? (t.low24 < 1 ? t.low24.toFixed(6) : t.low24.toFixed(2)) : 'N/A';
+    const highStr = t.high24 ? (t.high24 < 1 ? t.high24.toFixed(6) : t.high24.toFixed(2)) : 'N/A';
+    const vwapStr = t.vwap ? (t.vwap < 1 ? t.vwap.toFixed(6) : t.vwap.toFixed(2)) : 'N/A';
+    
+    let lines = [`${p.asset}: ${p.amount} tokens = ${p.value} EUR`];
+    lines.push(`  P&L: ${p.pnl} EUR (${p.pnlPct}) | Held ${p.days}d | Entry: ${p.avgEntry}`);
+    lines.push(`  Price: ${priceStr} | Bid: ${bidStr} | Ask: ${askStr} | Spread: ${t.spreadPct?.toFixed(2) || 'N/A'}%`);
+    lines.push(`  24h: ${lowStr}-${highStr} (${t.distFromLow || 0}% from low, ${t.dayMove || 0}% range) | VWAP: ${vwapStr} | Vol: ${t.volumeEur?.toFixed(0) || 'N/A'} EUR`);
+    
+    if (p.ohlc && p.ohlc.length > 0) {
+      lines.push(`  7d close: ${p.ohlc.join(' -> ')}`);
+    }
+    
+    if (p.depth) {
+      const bidWalls = p.depth.bidWalls?.map(w => `${w.price.toFixed(t.price < 1 ? 6 : 2)} (${w.volume.toFixed(1)})`).join(', ') || 'none';
+      const askWalls = p.depth.askWalls?.map(w => `${w.price.toFixed(t.price < 1 ? 6 : 2)} (${w.volume.toFixed(1)})`).join(', ') || 'none';
+      lines.push(`  Depth: ${p.depth.bidDepth5pct?.toFixed(0) || 0} EUR bid / ${p.depth.askDepth5pct?.toFixed(0) || 0} EUR ask to 5%`);
+      lines.push(`  Walls - Bid: ${bidWalls} | Ask: ${askWalls}`);
+    }
+    
+    if (p.performance && p.performance.trades > 0) {
+      lines.push(`  Your stats: ${p.performance.trades} trades, ${p.performance.winRate}% win, avg +${p.performance.avgWin}/-${p.performance.avgLoss} EUR`);
+    }
+    
+    return lines.join('\n');
+  };
+  
+  // Format BTC depth
+  const btcDepthStr = ctx.btcDepth ? 
+    `Depth: ${(ctx.btcDepth.bidDepth5pct / 1000000).toFixed(2)}M EUR bid / ${(ctx.btcDepth.askDepth5pct / 1000000).toFixed(2)}M EUR ask to 5%` : '';
+  
+  const prompt = `=== TIME ===
+${ctx.sessionInfo.utcTime}
+Session: ${ctx.sessionInfo.session}${ctx.sessionInfo.isWeekend ? ' (Weekend)' : ''}
 
-OPERATIONAL CONSTRAINTS:
-- I execute once every ${config.intervalMinutes} minutes (unless manually triggered more often, and when i am restarted)
-- I can ONLY place LIMIT orders (BUY at price, SELL at price)
-- NO stop-losses, trailing stops, or market orders available
-- I make trading decisions NOW, return next time to see results and act again
-- Speak in first person ("I am buying...", "I will sell...") - I AM the trader, not an advisor
-- Be confident but measured in tone - no hype, no aggression
+=== GLOBAL MARKET ===
+Market Cap: ${ctx.globalMarket?.marketCap ? `$${(ctx.globalMarket.marketCap / 1e12).toFixed(2)}T` : 'N/A'} (${ctx.globalMarket?.marketCapChange24h?.toFixed(1) || 0}% 24h)
+BTC Dominance: ${ctx.globalMarket?.btcDominance?.toFixed(1) || 'N/A'}% | ETH Dominance: ${ctx.globalMarket?.ethDominance?.toFixed(1) || 'N/A'}%
+24h Volume: ${ctx.globalMarket?.volume24h ? `$${(ctx.globalMarket.volume24h / 1e9).toFixed(1)}B` : 'N/A'}
+Fear/Greed: ${ctx.greedIndex}% (${ctx.greedClass})
+Market Breadth: ${ctx.marketBreadth.up} up / ${ctx.marketBreadth.down} down (${ctx.marketBreadth.total} total)
 
-GOAL: To the moon. 
+=== BTC ===
+Price: ${ctx.btcPrice ? ctx.btcPrice.toFixed(0) + ' EUR' : 'N/A'}
+24h Change: ${state.ticker['XXBTZEUR']?.dayMove || 0}% | Range: ${state.ticker['XXBTZEUR']?.low24?.toFixed(0) || 'N/A'}-${state.ticker['XXBTZEUR']?.high24?.toFixed(0) || 'N/A'} EUR
+${ctx.btcOHLC?.length > 0 ? `7d close: ${ctx.btcOHLC.map(c => c.close.toFixed(0)).join(' -> ')}` : ''}
+${btcDepthStr}
 
-STRATEGY:
-- Be smart: whenever you see a position with a profit of >10% or >100EUR, realise it (by selling at the current bid price). This is crypto you never know when the tables turn on you.
-- Be careful trading assets with very low (<1000 EUR) volume as they might be stale and not dynamic enough for a good return.
+=== ETH ===
+Price: ${ctx.ethPrice ? ctx.ethPrice.toFixed(0) + ' EUR' : 'N/A'}
+24h Change: ${state.ticker['XETHZEUR']?.dayMove || 0}% | Range: ${state.ticker['XETHZEUR']?.low24?.toFixed(0) || 'N/A'}-${state.ticker['XETHZEUR']?.high24?.toFixed(0) || 'N/A'} EUR
+${ctx.ethOHLC?.length > 0 ? `7d close: ${ctx.ethOHLC.map(c => c.close.toFixed(0)).join(' -> ')}` : ''}
 
-=== PORTFOLIO SUMMARY ===
-Total Portfolio: ${ctx.totalPortfolio} EUR
-EUR Cash Available: ${ctx.eurCash} EUR (${ctx.cashPct}% of portfolio)
-Invested in Positions: ${ctx.investedValue} EUR
+=== NEWS ===
+${formatNewsForPrompt(ctx.news)}
+
+=== PORTFOLIO ===
+Total: ${ctx.totalPortfolio} EUR | Cash: ${ctx.eurCash} EUR (${ctx.cashPct}%) | Invested: ${ctx.investedValue} EUR
 Unrealized P&L: ${ctx.unrealizedPnL} EUR
-Weekly P&L: ${ctx.analytics.weeklyPnL?.toFixed(2) || 0} EUR
-Weekly Win Rate: ${ctx.analytics.weeklyWinRate?.toFixed(0) || 0}%
+7d Change: ${ctx.weekChangeEUR || 'N/A'}% EUR | ${ctx.weekChangeBTC || 'N/A'}% BTC-adjusted
+${ctx.balanceHistory.length > 0 ? `History: ${ctx.balanceHistory.map(h => h.eur).join(' -> ')} EUR` : 'No history'}
 
-=== PORTFOLIO VALUE HISTORY (7 days) ===
-${ctx.balanceHistory.length > 0 ? ctx.balanceHistory.map(h => `${h.date}: ${h.eur} EUR (${h.btc} BTC @ ${h.btcPrice})`).join('\n') : 'No history available'}
-${ctx.weekChangeEUR !== null ? `Week change: ${ctx.weekChangeEUR}% EUR | ${ctx.weekChangeBTC}% BTC-equivalent` : ''}
+=== POSITIONS (${ctx.positions.length}) ===
+${ctx.positions.map(formatPosition).join('\n\n') || 'None'}
 
-=== MARKET CONDITIONS ===
-BTC: ${ctx.btcPrice} EUR | ETH: ${ctx.ethPrice} EUR
-Fear/Greed Index: ${ctx.greedIndex}% (${ctx.greedClass})
-
-=== ALL HOLDINGS (${ctx.holdings.length}) ===
-${ctx.holdings.map(h => `${h.asset}: ${h.amount} = ${h.value} EUR (${h.pctOfPortfolio}% of portfolio)`).join('\n') || 'None'}
-
-=== POSITIONS WITH FULL TICKER DATA (${ctx.positions.length}) ===
-${ctx.positions.map(p => `${p.asset}: ${p.value} EUR | P&L: ${p.pnl} EUR (${p.pnlPct}) | Held ${p.days}d
-  Entry: ${p.avgEntry} | Last: ${p.price} | Bid: ${p.bid} | Ask: ${p.ask} | Spread: ${p.spread}
-  24h: ${p.low24}-${p.high24} (${p.distFromLow}% from low, ${p.dayMove}% range) | VWAP: ${p.vwap} | Vol: ${p.volume24} | Trades: ${p.trades24h}`).join('\n') || 'None'}
+=== YOUR PERFORMANCE (30d) ===
+${ctx.analytics.totalTrades || 0} trades | ${ctx.analytics.winRate?.toFixed(0) || 0}% win rate | Realized: ${ctx.analytics.realizedPnL?.toFixed(2) || 0} EUR
+By asset: ${Object.entries(ctx.assetPerformance).slice(0, 10).map(([a, s]) => `${a} ${s.winRate}% win (${s.trades}t)`).join(', ') || 'No trades'}
 
 === OPEN ORDERS (${ctx.openOrders.length}) ===
 ${ctx.openOrders.map(o => `[${o.id}] ${o.type?.toUpperCase()} ${o.asset}: ${o.volume} @ ${o.price} EUR (placed ${o.created})`).join('\n') || 'None'}
 
-=== TOP 20 MOVERS (24h volatility) - Full Order Book Data ===
-Note: Vol = total EUR value traded in 24h
-${ctx.movers.slice(0, 20).map(m => {
+=== TOP 20 BY VOLUME ===
+${ctx.topByVolume.slice(0, 20).map(m => {
   const p = m.price < 1 ? 6 : 2;
-  return `${m.pair.replace(/Z?EUR$/, '')}: Last ${m.price?.toFixed(p)} | Bid: ${m.bid?.toFixed(p)} | Ask: ${m.ask?.toFixed(p)} | Spread: ${m.spreadPct?.toFixed(2)}%
-  24h: ${m.low24?.toFixed(p)}-${m.high24?.toFixed(p)} (${m.dayMove}% range, ${m.distFromLow}% from low) | VWAP: ${m.vwap?.toFixed(p)} | Vol: ${m.volumeEur?.toFixed(0) || 'N/A'} EUR | Trades: ${m.trades24h}`;
+  const ohlc = ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close.toFixed(p)).join('->').substring(0, 50) : '';
+  return `${m.pair.replace(/Z?EUR$/, '')}: ${m.price?.toFixed(p)} | 24h: ${m.low24?.toFixed(p)}-${m.high24?.toFixed(p)} (${m.dayMove}%) | Vol: ${m.volumeEur?.toFixed(0) || 0} EUR${ohlc ? ` | 7d: ${ohlc}` : ''}`;
 }).join('\n')}
 
-=== TOP 20 BY VOLUME (24h traded) - Full Order Book Data ===
-${ctx.topByVolume.map(m => {
+=== TOP 10 MOVERS (24h) ===
+${ctx.movers.slice(0, 10).map(m => {
   const p = m.price < 1 ? 6 : 2;
-  return `${m.pair.replace(/Z?EUR$/, '')}: Last ${m.price?.toFixed(p)} | Bid: ${m.bid?.toFixed(p)} | Ask: ${m.ask?.toFixed(p)} | Spread: ${m.spreadPct?.toFixed(2)}%
-  24h: ${m.low24?.toFixed(p)}-${m.high24?.toFixed(p)} (${m.dayMove}% range, ${m.distFromLow}% from low) | VWAP: ${m.vwap?.toFixed(p)} | Vol: ${m.volumeEur?.toFixed(0) || 'N/A'} EUR | Trades: ${m.trades24h}`;
+  return `${m.pair.replace(/Z?EUR$/, '')}: ${m.price?.toFixed(p)} (${m.dayMove > 0 ? '+' : ''}${m.dayMove}%) | Vol: ${m.volumeEur?.toFixed(0) || 0} EUR`;
 }).join('\n')}
 
-=== TRADES LAST 7 DAYS (${ctx.recentTrades.length}) ===
-${ctx.recentTrades.map(t => `[${t.time}] ${t.type.toUpperCase()} ${t.pair}: ${t.volume} @ ${t.price} = ${t.cost} EUR`).join('\n') || 'None'}
+=== RECENT TRADES (7d) ===
+${ctx.recentTrades.slice(0, 10).map(t => `[${t.time}] ${t.type.toUpperCase()} ${t.pair}: ${t.volume} @ ${t.price} = ${t.cost} EUR`).join('\n') || 'None'}
 
-=== PREVIOUS ${ctx.previousDecisions.length} DECISIONS ===
-${ctx.previousDecisions.map(d => `[${d.time}] ${d.sentiment}/${d.risk} | ${d.commands}${d.analysis ? ' | "' + d.analysis + '"' : ''}`).join('\n') || 'None'}
+${ctx.recentLedgers && ctx.recentLedgers.length > 0 ? `=== DEPOSITS/WITHDRAWALS (7d) ===
+${ctx.recentLedgers.map(l => `[${l.timestamp}] ${l.type.toUpperCase()}: ${l.amount.toFixed(l.asset === 'ZEUR' ? 2 : 6)} ${l.asset.replace('Z', '')}${l.fee > 0 ? ` (fee: ${l.fee})` : ''}`).join('\n')}` : ''}
 
-=== RECENT EXECUTION RESULTS (failed attempts indicate issues like delisted assets, market restrictions, or insufficient balance) ===
+=== PREVIOUS DECISIONS ===
+${ctx.previousDecisions.map(d => `[${d.time}] ${d.sentiment}/${d.risk} | ${d.commands}`).join('\n') || 'None'}
+
+${ctx.insights && ctx.insights.length > 0 ? `=== LEARNED INSIGHTS ===
+${ctx.insights.slice(0, 10).map(i => `• ${i.insight}`).join('\n')}` : ''}
+
+=== EXECUTION RESULTS ===
 ${ctx.recentExecutionResults.map(e => `[${e.time}] ${e.action} -> ${e.result}${e.error ? ` (${e.error})` : ''}`).join('\n') || 'None'}
 
 === RESPONSE FORMAT ===
 SENTIMENT: [bullish/neutral/bearish]
 RISK: [low/medium/high]
 
-ANALYSIS: [Your reasoning, 3-5 sentences. Reference specific data points. Try to not repeat the previous advice word-for-word, even if the conditions are similar explain how the situation relates to the last analysis instead of offering the same advice twice.]
+ANALYSIS: [Your reasoning. Reference specific data.]
+
+INSIGHT: [Optional: One key learning or observation to remember for future decisions. Be concise - one sentence max. Only include if you have a genuine insight.]
 
 COMMANDS:
-[One command per line, or HOLD if no action]
+[One command per line, or HOLD]
 
 === COMMAND SYNTAX ===
-BUY <ASSET> <eur_amount> <price> - e.g., "BUY ETH 50 3100" (buys 50 EUR worth at limit price)
-SELL <ASSET> <price> - e.g., "SELL ETH 3200" (sells ALL holdings at limit price)
-CANCEL BUY <ASSET> - e.g., "CANCEL BUY ETH" (cancels ALL buy orders for that asset)
+BUY <ASSET> <eur_amount> <price> - e.g., "BUY ETH 50 3100"
+SELL <ASSET> <price> - e.g., "SELL ETH 3200" (sells ALL holdings)
+CANCEL BUY <ASSET> - e.g., "CANCEL BUY ETH"
 HOLD - no action this time
 
-=== ABOUT CANCELLING ORDERS ===
-Issuing BUY/SELL commands will CANCEL all existing orders for that asset before placing the new order. This means there is no need to CANCEL orders before replacing them. You should only CANCEL BUY if you have a previous BUY order that you want to abandon. 
+Note: BUY/SELL cancels existing orders for that asset first.
 `;
 
   // Save prompt for debugging
@@ -752,7 +982,8 @@ Issuing BUY/SELL commands will CANCEL all existing orders for that asset before 
     // Parse response
     const sentimentMatch = response.match(/SENTIMENT:\s*(bullish|neutral|bearish)/i);
     const riskMatch = response.match(/RISK:\s*(low|medium|high)/i);
-    const analysisMatch = response.match(/ANALYSIS:\s*(.+?)(?=\n\s*COMMANDS:|\n\n|$)/is);
+    const analysisMatch = response.match(/ANALYSIS:\s*(.+?)(?=\n\s*(COMMANDS|INSIGHT):|\n\n|$)/is);
+    const insightMatch = response.match(/INSIGHT:\s*(.+?)(?=\n\s*COMMANDS:|\n\n|$)/is);
     const commandsMatch = response.match(/COMMANDS:\s*([\s\S]*?)(?=\n\n|$)/i);
     
     state.llmAnalysis = {
@@ -765,6 +996,24 @@ Issuing BUY/SELL commands will CANCEL all existing orders for that asset before 
     };
     
     saveLLMAnalysis();
+    
+    // Store insight if provided
+    if (insightMatch && insightMatch[1]) {
+      const insightText = insightMatch[1].trim();
+      if (insightText && insightText.length > 10) {
+        state.insights.unshift({
+          insight: insightText.substring(0, 200),
+          time: Date.now(),
+          sentiment: state.llmAnalysis.marketSentiment
+        });
+        // Keep only last 50 insights
+        if (state.insights.length > 50) {
+          state.insights = state.insights.slice(0, 50);
+        }
+        saveInsights();
+        log(`[AI] New insight stored: ${insightText.substring(0, 50)}...`);
+      }
+    }
     
     // Add to history
     state.llmHistory.unshift({ ...state.llmAnalysis, id: Date.now() });
