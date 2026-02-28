@@ -262,9 +262,9 @@ RISK: [low/medium/high]
 
 ANALYSIS: [Your reasoning. Reference specific data.]
 
-INSIGHT: [Optional: ONE trading pattern observed from past behavior (max 80 chars). State as a pattern, NOT a market observation. Examples: "Selling winners too early", "Dip-buying without confirmation", "Position sizing too large". Skip if nothing genuinely NEW.]
+INSIGHT: [Optional: ONE trading pattern. Before writing, COMPARE your idea against existing insights below. If your idea is similar to ANY existing insight (same topic, same lesson), skip this field entirely. Only provide an insight that covers a NEW topic not mentioned below. Max 80 chars, no personal pronouns.]
 ${ctx.insights && ctx.insights.length > 0 ? `
-EXISTING INSIGHTS (do NOT repeat or slightly rephrase these):
+=== EXISTING INSIGHTS (skip if your idea is similar to any of these) ===
 ${ctx.insights.slice(0, 15).map(i => `• ${i.insight}`).join('\n')}` : ''}
 
 REQUEST: [Optional: ONE piece of data you wish you had for better decisions. Examples: "BTC RSI indicator", "order book depth for XBT", "ETH/BTC correlation". Skip if nothing needed.]
