@@ -869,15 +869,7 @@
       const btc = data.ticker?.['XXBTZEUR']?.price;
       document.getElementById('btcPrice').textContent = btc ? btc.toFixed(0) + ' EUR' : '--';
       
-      // Stats (weekly)
-      document.getElementById('totalPnL').textContent = 
-        (data.analytics?.weeklyPnL || 0).toFixed(2) + ' EUR';
-      document.getElementById('totalPnL').className = 
-        'stat-value ' + ((data.analytics?.weeklyPnL || 0) >= 0 ? 'positive' : 'negative');
-      
-      document.getElementById('winRate').textContent = 
-        (data.analytics?.weeklyWinRate || 0).toFixed(0) + '%';
-      
+      // Stats
       document.getElementById('openOrders').textContent = 
         Object.keys(data.orders || {}).length;
       
