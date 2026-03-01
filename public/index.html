@@ -549,17 +549,6 @@
       </div>
     </header>
     
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-value" id="openOrders">--</div>
-        <div class="stat-label">Open Orders</div>
-      </div>
-      <div class="stat">
-        <div class="stat-value" id="positions">--</div>
-        <div class="stat-label">Positions</div>
-      </div>
-    </div>
-    
     <!-- Portfolio Chart -->
     <div class="card" style="margin-bottom: 20px;">
       <div class="card-header">
@@ -636,16 +625,6 @@
               <tr><td colspan="4" class="loading">Loading...</td></tr>
             </tbody>
           </table>
-        </div>
-      </div>
-      
-      <!-- Learned Insights -->
-      <div class="card" data-card-id="insights" draggable="true">
-        <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Learned Insights</h2>
-        </div>
-        <div class="card-content" id="insightsContent" style="max-height: 250px; overflow-y: auto;">
-          <div style="color: var(--text2); font-size: 0.9rem;">No insights yet. Run analysis to generate insights.</div>
         </div>
       </div>
       
@@ -869,17 +848,9 @@
       const btc = data.ticker?.['XXBTZEUR']?.price;
       document.getElementById('btcPrice').textContent = btc ? btc.toFixed(0) + ' EUR' : '--';
       
-      // Stats
-      document.getElementById('openOrders').textContent = 
-        Object.keys(data.orders || {}).length;
-      
-      document.getElementById('positions').textContent = 
-        Object.keys(data.positions || {}).length;
-      
       // New cards
       updateMarketContext(data);
       updateNews(data.news);
-      updateInsights(data.insights);
       updateQuestions(data.questions);
       updateLedgers(data.ledgers);
       
@@ -972,20 +943,20 @@
       
       let html = '';
       
-      if (news.world?.length) {
-        html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">World</h3>';
-        html += news.world.slice(0, 3).map(item => 
-          `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--red);">
+      if (news.crypto?.length) {
+        html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">Crypto</h3>';
+        html += news.crypto.slice(0, 3).map(item => 
+          `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--accent);">
             ${item.title}${item.age ? ' <span style="color: var(--text2); font-size: 0.75rem;">(' + item.age + ')</span>' : ''}
           </div>`
         ).join('');
         html += '</div>';
       }
       
-      if (news.crypto?.length) {
-        html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">Crypto</h3>';
-        html += news.crypto.slice(0, 3).map(item => 
-          `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--accent);">
+      if (news.world?.length) {
+        html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">World</h3>';
+        html += news.world.slice(0, 3).map(item => 
+          `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--red);">
             ${item.title}${item.age ? ' <span style="color: var(--text2); font-size: 0.75rem;">(' + item.age + ')</span>' : ''}
           </div>`
         ).join('');
@@ -1003,31 +974,6 @@
       }
       
       el.innerHTML = html;
-    }
-    
-    function updateInsights(insights) {
-      const el = document.getElementById('insightsContent');
-      if (!el) return;
-      
-      if (!insights || insights.length === 0) {
-        el.innerHTML = '<div style="color: var(--text2); font-size: 0.9rem;">No insights yet. Run analysis to generate insights.</div>';
-        return;
-      }
-      
-      el.innerHTML = insights.slice(0, 10).map((insight, i) => {
-        const time = insight.time ? new Date(insight.time).toLocaleDateString() : '';
-        const sentiment = insight.sentiment || '';
-        const sentimentClass = sentiment === 'bullish' ? 'bullish' : sentiment === 'bearish' ? 'bearish' : 'neutral';
-        return `
-          <div style="margin-bottom: 10px; padding: 8px; background: var(--bg); border-radius: 6px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span class="tag ${sentimentClass}" style="font-size: 0.7rem;">${sentiment || 'insight'}</span>
-              <span style="color: var(--text2); font-size: 0.7rem;">${time}</span>
-            </div>
-            <div style="font-size: 0.85rem; line-height: 1.4;">${insight.insight}</div>
-          </div>
-        `;
-      }).join('');
     }
     
     function updateQuestions(questions) {
