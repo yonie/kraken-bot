@@ -94,6 +94,25 @@ We have a large context window. Use it:
 - Let the LLM find patterns
 - Trust the LLM to focus on what matters
 
+## Strategy in Prompt
+
+Trading strategy goes in the prompt as natural language rules. The bot needs to know WHAT we want, not just receive raw data.
+
+```json
+"strategy": {
+  "goal": "Outperform BTC. Target +10% portfolio DAILY.",
+  "rules": [
+    "Spread positions across 5-15 assets minimum",
+    "Extreme Fear (<25) = BUY signal - deploy capital",
+    "Cash during dip = missed opportunity, not prudence",
+    "Ignore assets with < €500k volume (stale liquidity)",
+    "Position sizing: €50-500 per asset"
+  ]
+}
+```
+
+Without this, the LLM defaults to risk-averse behavior ("prudent to hold cash during uncertainty"). With it, the LLM acts aggressively to capture opportunities.
+
 ## Remember
 
 > "We are the client to the expert. We just want 'to the moon'."
