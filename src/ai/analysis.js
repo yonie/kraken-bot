@@ -296,8 +296,8 @@ function buildPrompt(ctx) {
       }
     },
     news: {
-      world: newsWorld,
       crypto: newsCrypto,
+      world: newsWorld,
       kraken: newsKraken
     },
     portfolio: {
