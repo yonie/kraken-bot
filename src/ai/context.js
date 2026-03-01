@@ -150,6 +150,11 @@ async function buildContext() {
     .sort((a, b) => (b.volumeEur || 0) - (a.volumeEur || 0))
     .slice(0, 20);
   
+  const movers = Object.entries(state.ticker)
+    .map(([pair, t]) => ({ pair, ...t }))
+    .sort((a, b) => b.change24hPct - a.change24hPct)
+    .slice(0, 20);
+  
   for (const t of topByVolume) {
     positionPairs.add(t.pair);
   }
@@ -160,11 +165,28 @@ async function buildContext() {
     const asset = p.replace(/Z?EUR$/, '').replace(/^X+/, '');
     return enriched[asset] || enriched['X' + asset] || enriched['XX' + asset];
   });
+  
+  // Always fetch depth for BTC, ETH, and top movers by volume
   const depthPairs = new Set(['XXBTZEUR', 'XETHZEUR']);
+  
+  // Add depth for held positions
   Object.keys(enriched).forEach(a => {
     const pair = kraken.findPairForAsset(a);
     if (pair) depthPairs.add(pair);
   });
+  
+  // Add depth for top 20 by volume
+  topByVolume.slice(0, 20).forEach(m => {
+    if (m.pair) depthPairs.add(m.pair);
+  });
+  
+  // Add depth for top 10 movers (potential breakout plays)
+  movers.slice(0, 10).forEach(m => {
+    if (m.pair && (m.volumeEur || 0) > 100000) { // Only if volume > €100k
+      depthPairs.add(m.pair);
+    }
+  });
+  
   const depthData = await kraken.fetchDepthForPairs([...depthPairs]);
   
   let assetsUp = 0;
@@ -243,11 +265,6 @@ async function buildContext() {
     if (b.isCash) return 1;
     return parseFloat(b.value) - parseFloat(a.value);
   });
-  
-  const movers = Object.entries(state.ticker)
-    .map(([pair, t]) => ({ pair, ...t }))
-    .sort((a, b) => b.change24hPct - a.change24hPct)
-    .slice(0, 20);
   
   const sevenDaysAgo = Date.now() / 1000 - (7 * 24 * 60 * 60);
   const recentTrades = state.trades

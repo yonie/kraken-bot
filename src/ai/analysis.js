@@ -251,6 +251,24 @@ function buildPrompt(ctx) {
   });
   
   const jsonData = JSON.stringify({
+    strategy: {
+      goal: "Outperform BTC. Target +10% portfolio DAILY.",
+      approach: "Aggressive swing trading. High risk, quick rewards. Capitalize on crypto volatility.",
+      rules: [
+        "Spread positions across 5-15 assets minimum - diversification increases win probability",
+        "Individual position size: €50-500 per asset based on conviction and liquidity",
+        "Core BTC position: 30-50% of portfolio as anchor",
+        "Extreme Fear (<25) = BUY signal - deploy capital across multiple assets",
+        "Extreme Greed (>75) = SELL signal - take profits across positions",
+        "Cash sitting idle during a dip = missed opportunity, not prudence",
+        "Fresh deposits should be deployed within 24h when conditions align",
+        "HOLD is only acceptable when fully invested in a winning position",
+        "Cut losses quickly when thesis breaks (-10% stop loss)",
+        "Ignore assets with < €500k daily volume - stale liquidity = stuck positions",
+        "Check order book depth before buying - avoid thin order books",
+        "A 97% cash position during a dip is a FAILURE, not prudence"
+      ]
+    },
     time: {
       utc: ctx.sessionInfo.utcTime,
       session: ctx.sessionInfo.session,
@@ -342,9 +360,10 @@ ${jsonData}
 SENTIMENT: [bullish/neutral/bearish]
 RISK: [low/medium/high]
 
-ANALYSIS: [Your reasoning. Reference specific data from the JSON above.]
+ANALYSIS: [Your reasoning. Reference specific data. Be decisive.]
+DECISION: [What action you're taking and WHY it aligns with the +10% daily goal]
 
-REQUEST: [Optional: ONE piece of data you wish you had for better decisions. Example: "BTC RSI indicator". Skip if nothing needed.]
+REQUEST: [Optional: ONE piece of data you wish you had. Skip if nothing needed.]
 
 COMMANDS:
 [One command per line, or HOLD]
@@ -362,16 +381,14 @@ Note: BUY/SELL cancels existing orders for that asset first.
 function parseResponse(response) {
   const sentimentMatch = response.match(/SENTIMENT:\s*(bullish|neutral|bearish)/i);
   const riskMatch = response.match(/RISK:\s*(low|medium|high)/i);
-  const analysisMatch = response.match(/ANALYSIS:\s*(.+?)(?=\n\s*(COMMANDS|INSIGHT|REQUEST):|\n\n|$)/is);
-  const insightMatch = response.match(/INSIGHT:\s*(.+?)(?=\n\s*(COMMANDS|REQUEST):|\n\n|$)/is);
-  const requestMatch = response.match(/REQUEST:\s*(.+?)(?=\n\s*(COMMANDS|INSIGHT):|\n\n|$)/is);
-  const commandsMatch = response.match(/COMMANDS:\s*([\s\S]*?)(?=\n\n|$)/i);
+  const analysisMatch = response.match(/ANALYSIS:\s*([\s\S]+?)(?=\n\s*(REQUEST|COMMANDS):)/i);
+  const requestMatch = response.match(/REQUEST:\s*(.+?)(?=\n\s*(COMMANDS):|\n\n|$)/is);
+  const commandsMatch = response.match(/COMMANDS:\s*([\s\S]*?)(?=\n\n|===|$)/i);
   
   return {
     sentiment: sentimentMatch?.[1]?.toLowerCase() || null,
     risk: riskMatch?.[1]?.toLowerCase() || null,
     analysis: analysisMatch?.[1]?.trim() || null,
-    insight: insightMatch?.[1]?.trim() || null,
     request: requestMatch?.[1]?.trim() || null,
     commands: commandsMatch?.[1]?.trim() || 'HOLD'
   };

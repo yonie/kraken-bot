@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-02-27T14-45-09",
+  "model": "qwen3.5:cloud",
+  "runsPerVariant": 3,
+  "results": [
+    {
+      "variant": "A",
+      "success": true,
+      "avgDuration": null
+    },
+    {
+      "variant": "B",
+      "success": true,
+      "avgDuration": null
+    },
+    {
+      "variant": "C",
+      "success": true,
+      "avgDuration": null
+    },
+    {
+      "variant": "D",
+      "success": true,
+      "avgDuration": null
+    }
+  ]
+}
