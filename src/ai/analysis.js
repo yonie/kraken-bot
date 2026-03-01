@@ -277,7 +277,8 @@ function buildPrompt(ctx) {
         low_24h: state.ticker['XXBTZEUR']?.low24,
         high_24h: state.ticker['XXBTZEUR']?.high24,
         range_24h_pct: state.ticker['XXBTZEUR']?.range24hPct,
-        ohlc_7d: ctx.btcOHLC?.map(c => c.close),
+        ohlc_7d: ctx.btcOHLC?.slice(-7).map(c => c.close),
+        rsi_14: ctx.btcRSI ? Math.round(ctx.btcRSI) : null,
         depth: ctx.btcDepth ? {
           bid_depth_5pct_eur: ctx.btcDepth.bidDepth5pct,
           ask_depth_5pct_eur: ctx.btcDepth.askDepth5pct,

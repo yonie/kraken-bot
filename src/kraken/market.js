@@ -118,7 +118,7 @@ async function fetchOHLC(pair, interval = 1440) {
             return resolve(null);
           }
           
-          const candles = ohlcData.slice(-7).map(c => ({
+          const candles = ohlcData.slice(-30).map(c => ({
             time: parseInt(c[0]) * 1000,
             open: parseFloat(c[1]),
             high: parseFloat(c[2]),
