@@ -156,6 +156,10 @@ function buildCostBasis() {
   let totalPnL = 0;
   let wins = 0;
   let losses = 0;
+  let weeklyPnL = 0;
+  let weeklyWins = 0;
+  let weeklyLosses = 0;
+  let weeklyTrades = 0;
   const recentActivity = [];
   const oneWeekAgo = (Date.now() - (7 * 24 * 60 * 60 * 1000)) / 1000;
   
@@ -166,6 +170,14 @@ function buildCostBasis() {
     for (const t of cb.completedTrades) {
       if (t.pnl >= 0) wins++;
       else losses++;
+      
+      // Only count 7-day trades for weekly stats
+      if (t.sellTime >= oneWeekAgo) {
+        weeklyTrades++;
+        weeklyPnL += t.pnl;
+        if (t.pnl >= 0) weeklyWins++;
+        else weeklyLosses++;
+      }
       
       recentActivity.push({
         asset,
@@ -181,25 +193,19 @@ function buildCostBasis() {
   
   const displayedTrades = recentActivity.slice(0, 50);
   
-  let displayedPnL = 0;
-  let displayedWins = 0;
-  let displayedLosses = 0;
-  for (const t of displayedTrades) {
-    displayedPnL += t.pnl;
-    if (t.pnl >= 0) displayedWins++;
-    else displayedLosses++;
-  }
-  
   state.tradeAnalytics = {
     lastUpdate: Date.now(),
     summary: {
       totalTrades: wins + losses,
       realizedPnL: totalPnL,
-      weeklyPnL: displayedPnL,
+      weeklyPnL: weeklyPnL,
+      weeklyTrades: weeklyTrades,
+      weeklyWins: weeklyWins,
+      weeklyLosses: weeklyLosses,
       winningTrades: wins,
       losingTrades: losses,
       winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
-      weeklyWinRate: (displayedWins + displayedLosses) > 0 ? (displayedWins / (displayedWins + displayedLosses)) * 100 : 0
+      weeklyWinRate: weeklyTrades > 0 ? (weeklyWins / weeklyTrades) * 100 : 0
     },
     recentActivity: displayedTrades
   };

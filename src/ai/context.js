@@ -160,9 +160,12 @@ async function buildContext() {
     const asset = p.replace(/Z?EUR$/, '').replace(/^X+/, '');
     return enriched[asset] || enriched['X' + asset] || enriched['XX' + asset];
   });
-  const depthData = await kraken.fetchDepthForPairs(
-    Object.keys(enriched).map(a => kraken.findPairForAsset(a)).filter(Boolean)
-  );
+  const depthPairs = new Set(['XXBTZEUR', 'XETHZEUR']);
+  Object.keys(enriched).forEach(a => {
+    const pair = kraken.findPairForAsset(a);
+    if (pair) depthPairs.add(pair);
+  });
+  const depthData = await kraken.fetchDepthForPairs([...depthPairs]);
   
   let assetsUp = 0;
   let assetsDown = 0;
@@ -270,14 +273,6 @@ async function buildContext() {
     created: new Date(o.opentm * 1000).toLocaleString()
   }));
   
-  const previousDecisions = state.llmHistory.slice(0, 5).map(h => ({
-    time: new Date(h.lastUpdate).toLocaleString(),
-    sentiment: h.marketSentiment,
-    risk: h.riskAssessment,
-    commands: h.commands || 'HOLD',
-    analysis: h.analysis?.substring(0, 200) || '' 
-  }));
-  
   const recentExecutions = state.aiExecutionHistory.executions.slice(-10).reverse();
   const seenKeys = new Set();
   const recentExecutionResults = [];
@@ -323,26 +318,45 @@ async function buildContext() {
     }
   }
   
+  const btcOHLC = ohlcData['XXBTZEUR'] || [];
+  const ethOHLC = ohlcData['XETHZEUR'] || [];
+  const recentLedgers = state.ledgers.slice(0, 10);
+  
   let weekChangeEUR = null;
-  let weekChangeBTC = null;
+  let weekChangeExclDeposits = null;
+  let btcPriceChange = null;
+  
   if (balanceHistory.length >= 2) {
     const oldest = balanceHistory[0];
     const newest = balanceHistory[balanceHistory.length - 1];
     const oldEUR = parseFloat(oldest.eur);
     const newEUR = parseFloat(newest.eur);
-    const oldBTC = parseFloat(oldest.btc);
-    const newBTC = parseFloat(newest.btc);
     if (!isNaN(oldEUR) && !isNaN(newEUR) && oldEUR > 0) {
       weekChangeEUR = ((newEUR - oldEUR) / oldEUR * 100).toFixed(2);
-    }
-    if (!isNaN(oldBTC) && !isNaN(newBTC) && oldBTC > 0) {
-      weekChangeBTC = ((newBTC - oldBTC) / oldBTC * 100).toFixed(2);
+      
+      // Calculate deposits/withdrawals in 7d window
+      const weekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+      const recentDeposits = state.ledgers
+        .filter(l => l.time * 1000 >= weekAgo)
+        .reduce((sum, l) => {
+          const amt = parseFloat(l.amount) || 0;
+          return l.type === 'deposit' ? sum + amt : sum - amt;
+        }, 0);
+      
+      const perfBase = oldEUR + recentDeposits;
+      if (perfBase > 0) {
+        weekChangeExclDeposits = ((newEUR - oldEUR - recentDeposits) / perfBase * 100).toFixed(2);
+      }
     }
   }
   
-  const btcOHLC = ohlcData['XXBTZEUR'] || [];
-  const ethOHLC = ohlcData['XETHZEUR'] || [];
-  const recentLedgers = state.ledgers.slice(0, 10);
+  if (btcOHLC.length >= 2) {
+    const startPrice = btcOHLC[0].close;
+    const endPrice = btcOHLC[btcOHLC.length - 1].close;
+    if (startPrice > 0) {
+      btcPriceChange = ((endPrice - startPrice) / startPrice * 100).toFixed(2);
+    }
+  }
   
   return {
     sessionInfo,
@@ -369,14 +383,13 @@ async function buildContext() {
     recentTrades,
     recentLedgers,
     openOrders,
-    previousDecisions,
     recentExecutionResults,
     analytics,
     assetPerformance,
-    insights: state.insights.slice(0, 20),
     balanceHistory,
     weekChangeEUR,
-    weekChangeBTC
+    weekChangeExclDeposits,
+    btcPriceChange
   };
 }
 

@@ -89,19 +89,6 @@ async function runAnalysis(force = false) {
     
     saveLLMAnalysis();
     
-    if (parsed.insight && parsed.insight.length > 5) {
-      state.insights.unshift({
-        insight: parsed.insight,
-        time: Date.now(),
-        sentiment: parsed.sentiment
-      });
-      if (state.insights.length > 50) {
-        state.insights = state.insights.slice(0, 50);
-      }
-      saveInsights();
-      log(`[AI] New insight stored: ${parsed.insight}`);
-    }
-    
     if (parsed.request && parsed.request.length > 5) {
       state.questions.unshift({
         request: parsed.request,
@@ -185,89 +172,178 @@ function buildPrompt(ctx) {
   const btcDepthStr = ctx.btcDepth ? 
     `Depth: ${(ctx.btcDepth.bidDepth5pct / 1000000).toFixed(2)}M EUR bid / ${(ctx.btcDepth.askDepth5pct / 1000000).toFixed(2)}M EUR ask to 5%` : '';
   
-  return `=== TIME ===
-${ctx.sessionInfo.utcTime}
-Session: ${ctx.sessionInfo.session}${ctx.sessionInfo.isWeekend ? ' (Weekend)' : ''}
-
-=== GLOBAL MARKET ===
-Market Cap: ${ctx.globalMarket?.marketCap ? `$${(ctx.globalMarket.marketCap / 1e12).toFixed(2)}T` : 'N/A'} (${ctx.globalMarket?.marketCapChange24h?.toFixed(1) || 0}% 24h)
-BTC Dominance: ${ctx.globalMarket?.btcDominance?.toFixed(1) || 'N/A'}% | ETH Dominance: ${ctx.globalMarket?.ethDominance?.toFixed(1) || 'N/A'}%
-24h Volume: ${ctx.globalMarket?.volume24h ? `$${(ctx.globalMarket.volume24h / 1e9).toFixed(1)}B` : 'N/A'}
-Fear/Greed: ${ctx.greedIndex}% (${ctx.greedClass})
-Market Breadth: ${ctx.marketBreadth.up} up / ${ctx.marketBreadth.down} down (${ctx.marketBreadth.total} total)
-
-=== BTC ===
-Price: ${ctx.btcPrice ? ctx.btcPrice.toFixed(0) + ' EUR' : 'N/A'}
-24h Change: ${state.ticker['XXBTZEUR']?.change24hPct >= 0 ? '+' : ''}${state.ticker['XXBTZEUR']?.change24hPct || 0}% | Range: ${state.ticker['XXBTZEUR']?.low24?.toFixed(0) || 'N/A'}-${state.ticker['XXBTZEUR']?.high24?.toFixed(0) || 'N/A'} EUR (${state.ticker['XXBTZEUR']?.range24hPct || 0}%)
-${ctx.btcOHLC?.length > 0 ? `7d close: ${ctx.btcOHLC.map(c => c.close.toFixed(0)).join(' -> ')}` : ''}
-${btcDepthStr}
-
-=== ETH ===
-Price: ${ctx.ethPrice ? ctx.ethPrice.toFixed(0) + ' EUR' : 'N/A'}
-24h Change: ${state.ticker['XETHZEUR']?.change24hPct >= 0 ? '+' : ''}${state.ticker['XETHZEUR']?.change24hPct || 0}% | Range: ${state.ticker['XETHZEUR']?.low24?.toFixed(0) || 'N/A'}-${state.ticker['XETHZEUR']?.high24?.toFixed(0) || 'N/A'} EUR (${state.ticker['XETHZEUR']?.range24hPct || 0}%)
-${ctx.ethOHLC?.length > 0 ? `7d close: ${ctx.ethOHLC.map(c => c.close.toFixed(0)).join(' -> ')}` : ''}
-
-=== NEWS ===
-[WORLD]
-${ctx.news.world?.items?.slice(0, 5).map(item => `  ${item.title}${item.age ? ` (${item.age})` : ''}`).join('\n') || '  No recent world news'}
-[CRYPTO]
-${ctx.news.crypto?.items?.slice(0, 5).map(item => `  ${item.title}${item.age ? ` (${item.age})` : ''}`).join('\n') || '  No recent crypto news'}
-[KRAKEN]
-${ctx.news.kraken?.items?.slice(0, 5).map(item => `  ${item.title}${item.age ? ` (${item.age})` : ''}`).join('\n') || '  No recent Kraken updates'}
-
-=== PORTFOLIO ===
-Total: ${ctx.totalPortfolio} EUR | Cash: ${ctx.eurCash} EUR (${ctx.cashPct}%) | Invested: ${ctx.investedValue} EUR
-Unrealized P&L: ${ctx.unrealizedPnL} EUR
-7d Change: ${ctx.weekChangeEUR || 'N/A'}% EUR | ${ctx.weekChangeBTC || 'N/A'}% BTC-adjusted
-${ctx.balanceHistory.length > 0 ? `History: ${ctx.balanceHistory.map(h => h.eur).join(' -> ')} EUR` : 'No history'}
-
-=== POSITIONS (${ctx.positions.length}) ===
-${ctx.positions.map(formatPosition).join('\n\n') || 'None'}
-
-=== YOUR PERFORMANCE (30d) ===
-${ctx.analytics.totalTrades || 0} trades | ${ctx.analytics.winRate?.toFixed(0) || 0}% win rate | Realized: ${ctx.analytics.realizedPnL?.toFixed(2) || 0} EUR
-By asset: ${Object.entries(ctx.assetPerformance).slice(0, 10).map(([a, s]) => `${a} ${s.winRate}% win (${s.trades}t)`).join(', ') || 'No trades'}
-
-=== OPEN ORDERS (${ctx.openOrders.length}) ===
-${ctx.openOrders.map(o => `[${o.id}] ${o.type?.toUpperCase()} ${o.asset}: ${o.volume} @ ${o.price} EUR (placed ${o.created})`).join('\n') || 'None'}
-
-=== TOP 20 BY VOLUME ===
-${ctx.topByVolume.slice(0, 20).map(m => {
-  const p = m.price < 1 ? 6 : 2;
-  const ohlc = ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close.toFixed(p)).join('->').substring(0, 50) : '';
-  return `${m.pair.replace(/Z?EUR$/, '')}: ${m.price?.toFixed(p)} | 24h: ${m.low24?.toFixed(p)}-${m.high24?.toFixed(p)} (range ${m.range24hPct}%) | Vol: ${m.volumeEur?.toFixed(0) || 0} EUR${ohlc ? ` | 7d: ${ohlc}` : ''}`;
-}).join('\n')}
-
-=== TOP 10 MOVERS (24h change) ===
-${ctx.movers.slice(0, 10).map(m => {
-  const p = m.price < 1 ? 6 : 2;
-  return `${m.pair.replace(/Z?EUR$/, '')}: ${m.price?.toFixed(p)} (${m.change24hPct >= 0 ? '+' : ''}${m.change24hPct}%) | Vol: ${m.volumeEur?.toFixed(0) || 0} EUR`;
-}).join('\n')}
-
-=== RECENT TRADES (7d) ===
-${ctx.recentTrades.slice(0, 10).map(t => `[${t.time}] ${t.type.toUpperCase()} ${t.pair}: ${t.volume} @ ${t.price} = ${t.cost} EUR`).join('\n') || 'None'}
-
-${ctx.recentLedgers && ctx.recentLedgers.length > 0 ? `=== DEPOSITS/WITHDRAWALS (7d) ===
-${ctx.recentLedgers.map(l => `[${l.timestamp}] ${l.type.toUpperCase()}: ${l.amount.toFixed(l.asset === 'ZEUR' ? 2 : 6)} ${l.asset.replace('Z', '')}${l.fee > 0 ? ` (fee: ${l.fee})` : ''}`).join('\n')}` : ''}
-
-=== PREVIOUS DECISIONS ===
-${ctx.previousDecisions.map(d => `[${d.time}] ${d.sentiment}/${d.risk} | ${d.commands}`).join('\n') || 'None'}
-
-=== EXECUTION RESULTS ===
-${ctx.recentExecutionResults.map(e => `[${e.time}] ${e.action} -> ${e.result}${e.error ? ` (${e.error})` : ''}`).join('\n') || 'None'}
+  const newsWorld = ctx.news.world?.items?.slice(0, 5).map(item => item.title) || [];
+  const newsCrypto = ctx.news.crypto?.items?.slice(0, 5).map(item => item.title) || [];
+  const newsKraken = ctx.news.kraken?.items?.slice(0, 5).map(item => item.title) || [];
+  
+  const topByVolumeFormatted = ctx.topByVolume.slice(0, 20).map(m => ({
+    pair: m.pair.replace(/Z?EUR$/, ''),
+    price: m.price,
+    low_24h: m.low24,
+    high_24h: m.high24,
+    range_24h_pct: m.range24hPct,
+    volume_eur: m.volumeEur,
+    ohlc_7d: ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null
+  }));
+  
+  const moversFormatted = ctx.movers.slice(0, 10).map(m => ({
+    pair: m.pair.replace(/Z?EUR$/, ''),
+    price: m.price,
+    change_24h_pct: m.change24hPct,
+    volume_eur: m.volumeEur
+  }));
+  
+  const recentTradesFormatted = ctx.recentTrades.slice(0, 10).map(t => ({
+    time: t.time,
+    type: t.type,
+    asset: t.pair,
+    volume: parseFloat(t.volume),
+    price: parseFloat(t.price),
+    eur: parseFloat(t.cost)
+  }));
+  
+  const depositsFormatted = (ctx.recentLedgers || []).map(l => ({
+    time: l.timestamp,
+    type: l.type,
+    asset: l.asset.replace('Z', ''),
+    amount: l.amount,
+    fee: l.fee
+  }));
+  
+  const executionResultsFormatted = ctx.recentExecutionResults.map(e => ({
+    time: e.time,
+    action: e.action,
+    result: e.result,
+    error: e.error
+  }));
+  
+  const positionsFormatted = ctx.positions.map(p => {
+    if (p.isCash) {
+      return { asset: 'EUR', amount: parseFloat(p.amount), value_eur: parseFloat(p.value) };
+    }
+    const t = p.ticker || {};
+    return {
+      asset: p.asset,
+      amount: p.amount,
+      value_eur: parseFloat(p.value),
+      unrealized_pnl_eur: parseFloat(p.pnl),
+      unrealized_pnl_pct: parseFloat(p.pnlPct.replace('%', '')),
+      holding_days: p.days,
+      entry_price: parseFloat(p.avgEntry),
+      current_price: t.price,
+      bid: t.bid,
+      ask: t.ask,
+      spread_pct: t.spreadPct,
+      low_24h: t.low24,
+      high_24h: t.high24,
+      dist_from_low_pct: t.distFromLow,
+      range_24h_pct: t.range24hPct,
+      vwap: t.vwap,
+      volume_eur: t.volumeEur,
+      ohlc_7d: p.ohlc ? p.ohlc.map(c => parseFloat(c)) : null,
+      depth: p.depth ? {
+        bid_depth_5pct: p.depth.bidDepth5pct,
+        ask_depth_5pct: p.depth.askDepth5pct,
+        bid_walls: p.depth.bidWalls,
+        ask_walls: p.depth.askWalls
+      } : null
+    };
+  });
+  
+  const jsonData = JSON.stringify({
+    time: {
+      utc: ctx.sessionInfo.utcTime,
+      session: ctx.sessionInfo.session,
+      is_weekend: ctx.sessionInfo.isWeekend
+    },
+    market: {
+      global: {
+        market_cap_usd: ctx.globalMarket?.marketCap,
+        market_cap_change_24h_pct: ctx.globalMarket?.marketCapChange24h,
+        btc_dominance_pct: ctx.globalMarket?.btcDominance,
+        eth_dominance_pct: ctx.globalMarket?.ethDominance,
+        volume_24h_usd: ctx.globalMarket?.volume24h
+      },
+      fear_greed_index: ctx.greedIndex,
+      fear_greed_index_description: "0-25: Extreme Fear, 26-45: Fear, 46-55: Neutral, 56-75: Greed, 76-100: Extreme Greed",
+      market_breadth: {
+        up: ctx.marketBreadth.up,
+        down: ctx.marketBreadth.down,
+        total: ctx.marketBreadth.total
+      },
+      btc: {
+        price_eur: ctx.btcPrice,
+        change_24h_pct: state.ticker['XXBTZEUR']?.change24hPct,
+        low_24h: state.ticker['XXBTZEUR']?.low24,
+        high_24h: state.ticker['XXBTZEUR']?.high24,
+        range_24h_pct: state.ticker['XXBTZEUR']?.range24hPct,
+        ohlc_7d: ctx.btcOHLC?.map(c => c.close),
+        depth: ctx.btcDepth ? {
+          bid_depth_5pct_eur: ctx.btcDepth.bidDepth5pct,
+          ask_depth_5pct_eur: ctx.btcDepth.askDepth5pct,
+          bid_walls: ctx.btcDepth.bidWalls,
+          ask_walls: ctx.btcDepth.askWalls
+        } : null
+      },
+      eth: {
+        price_eur: ctx.ethPrice,
+        change_24h_pct: state.ticker['XETHZEUR']?.change24hPct,
+        low_24h: state.ticker['XETHZEUR']?.low24,
+        high_24h: state.ticker['XETHZEUR']?.high24,
+        range_24h_pct: state.ticker['XETHZEUR']?.range24hPct,
+        ohlc_7d: ctx.ethOHLC?.map(c => c.close)
+      }
+    },
+    news: {
+      world: newsWorld,
+      crypto: newsCrypto,
+      kraken: newsKraken
+    },
+    portfolio: {
+      total_eur: parseFloat(ctx.totalPortfolio),
+      cash_eur: parseFloat(ctx.eurCash),
+      invested_eur: parseFloat(ctx.investedValue),
+      cash_pct: parseFloat(ctx.cashPct),
+      unrealized_pnl_eur: parseFloat(ctx.unrealizedPnL)
+    },
+    performance_7d: {
+      portfolio_start_eur: ctx.balanceHistory[0] ? parseFloat(ctx.balanceHistory[0].eur) : null,
+      portfolio_end_eur: ctx.balanceHistory[ctx.balanceHistory.length - 1] ? parseFloat(ctx.balanceHistory[ctx.balanceHistory.length - 1].eur) : null,
+      net_change_eur: ctx.balanceHistory[0] && ctx.balanceHistory[ctx.balanceHistory.length - 1] 
+        ? parseFloat(ctx.balanceHistory[ctx.balanceHistory.length - 1].eur) - parseFloat(ctx.balanceHistory[0].eur) 
+        : null,
+      deposits_eur: depositsFormatted.filter(d => d.type === 'deposit').reduce((sum, d) => sum + d.amount, 0),
+      withdrawals_eur: depositsFormatted.filter(d => d.type === 'withdrawal').reduce((sum, d) => sum + d.amount, 0),
+      btc_change_pct: parseFloat(ctx.btcPriceChange),
+      explanation: "net_change_eur includes deposits/withdrawals. trading_pnl = net_change - deposits + withdrawals. Compare your trading_pnl to what you would have made if you held BTC instead.",
+      history_eur: ctx.balanceHistory.map(h => parseFloat(h.eur))
+    },
+    positions: positionsFormatted,
+    open_orders: ctx.openOrders.map(o => ({
+      id: o.id,
+      type: o.type,
+      asset: o.asset,
+      volume: parseFloat(o.volume),
+      price: parseFloat(o.price),
+      created: o.created
+    })),
+    top_by_volume: topByVolumeFormatted,
+    top_movers_24h: moversFormatted,
+    recent_trades_7d: recentTradesFormatted,
+    deposits_withdrawals_7d: depositsFormatted,
+    execution_results: executionResultsFormatted
+  }, null, 2);
+  
+  return `=== DATA ===
+${jsonData}
 
 === RESPONSE FORMAT ===
 SENTIMENT: [bullish/neutral/bearish]
 RISK: [low/medium/high]
 
-ANALYSIS: [Your reasoning. Reference specific data.]
+ANALYSIS: [Your reasoning. Reference specific data from the JSON above.]
 
-INSIGHT: [Optional: ONE trading pattern. Before writing, COMPARE your idea against existing insights below. If your idea is similar to ANY existing insight (same topic, same lesson), skip this field entirely. Only provide an insight that covers a NEW topic not mentioned below. Max 80 chars, no personal pronouns.]
-${ctx.insights && ctx.insights.length > 0 ? `
-=== EXISTING INSIGHTS (skip if your idea is similar to any of these) ===
-${ctx.insights.slice(0, 15).map(i => `• ${i.insight}`).join('\n')}` : ''}
-
-REQUEST: [Optional: ONE piece of data you wish you had for better decisions. Examples: "BTC RSI indicator", "order book depth for XBT", "ETH/BTC correlation". Skip if nothing needed.]
+REQUEST: [Optional: ONE piece of data you wish you had for better decisions. Example: "BTC RSI indicator". Skip if nothing needed.]
 
 COMMANDS:
 [One command per line, or HOLD]
