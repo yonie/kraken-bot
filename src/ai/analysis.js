@@ -255,18 +255,17 @@ function buildPrompt(ctx) {
       goal: "Outperform BTC. Target +10% portfolio DAILY.",
       approach: "Aggressive swing trading. High risk, quick rewards. Capitalize on crypto volatility.",
       rules: [
-        "Spread positions across 5-15 assets minimum - diversification increases win probability",
-        "Individual position size: €50-500 per asset based on conviction and liquidity",
-        "Core BTC position: 30-50% of portfolio as anchor",
-        "Extreme Fear (<25) = BUY signal - deploy capital across multiple assets",
-        "Extreme Greed (>75) = SELL signal - take profits across positions",
+        "Spread positions across 5-15 assets (guideline, not strict)",
+        "Individual position size: typically €50-500 per asset based on conviction and liquidity",
+        "Diversify across assets - avoid over-concentration in any single position",
+        "Extreme Fear (<25) is typically a BUY signal - deploy capital across multiple assets",
+        "Extreme Greed (>75) is typically a SELL signal - take profits across positions",
         "Cash sitting idle during a dip = missed opportunity, not prudence",
-        "Fresh deposits should be deployed within 24h when conditions align",
+        "Fresh deposits should be deployed quickly when conditions align",
         "HOLD is only acceptable when fully invested in a winning position",
-        "Cut losses quickly when thesis breaks (-10% stop loss)",
-        "Ignore assets with < €500k daily volume - stale liquidity = stuck positions",
+        "Check liquidity before buying - avoid low-volume assets that are hard to exit",
         "Check order book depth before buying - avoid thin order books",
-        "A 97% cash position during a dip is a FAILURE, not prudence"
+        "High cash position during a dip = missed opportunity"
       ]
     },
     time: {
