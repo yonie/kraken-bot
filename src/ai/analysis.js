@@ -262,7 +262,6 @@ function buildPrompt(ctx) {
         "Extreme Greed (>75) is typically a SELL signal - take profits across positions",
         "Cash sitting idle during a dip = missed opportunity, not prudence",
         "Fresh deposits should be deployed quickly when conditions align",
-        "HOLD is only acceptable when fully invested in a winning position",
         "Check liquidity before buying - avoid low-volume assets that are hard to exit",
         "Check order book depth before buying - avoid thin order books",
         "High cash position during a dip = missed opportunity"
