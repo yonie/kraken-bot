@@ -10,40 +10,99 @@ const { state, log, saveAIExecutions } = require('../state');
 function parseCommands(raw) {
   const actions = [];
   
-  const commandsMatch = raw.match(/COMMANDS:\s*([\s\S]*?)(?:\n\n|$)/i);
-  const text = commandsMatch ? commandsMatch[1] : raw;
-  
-  // SELL <ASSET> <price>
-  for (const match of text.matchAll(/^SELL\s+([A-Z0-9]{1,10})\s+(\d+(?:\.\d+)?)/gim)) {
-    const asset = match[1].toUpperCase().replace(/Z?EUR$/, '');
-    const price = parseFloat(match[2]);
-    if (asset !== 'EUR' && asset !== 'HOLD' && asset.length > 0 && price > 0) {
-      actions.push({ action: 'SELL', asset, price });
+  // Extract commands between ---COMMANDS--- and ---END--- if present
+  let text = raw;
+  const blockMatch = raw.match(/---COMMANDS---\s*([\s\S]*?)---END---/i);
+  if (blockMatch) {
+    text = blockMatch[1];
+  } else {
+    // Fallback: extract from COMMANDS: section
+    const commandsMatch = raw.match(/COMMANDS:\s*([\s\S]*?)(?:\n\n|$)/i);
+    if (commandsMatch) {
+      text = commandsMatch[1];
     }
   }
   
-  // BUY <ASSET> <amount_eur> <price>
-  for (const match of text.matchAll(/^BUY\s+([A-Z0-9]{1,10})\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/gim)) {
-    const asset = match[1].toUpperCase().replace(/Z?EUR$/, '');
-    const amountEur = parseFloat(match[2]);
-    const price = parseFloat(match[3]);
-    if (asset !== 'EUR' && asset !== 'HOLD' && asset.length > 0 && amountEur > 0 && price > 0) {
-      actions.push({ action: 'BUY', asset, amountEur, price });
+  // Track processed lines to avoid double-matching
+  const processedLines = new Set();
+  const lines = text.split('\n');
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+    
+    // SELL <ASSET> ALL <PRICE> - sell all holdings
+    const allMatch = trimmedLine.match(/^SELL\s+([A-Z0-9]{1,10})\s+ALL\s+(\d+(?:\.\d+)?)/i);
+    if (allMatch) {
+      const asset = allMatch[1].toUpperCase().replace(/Z?EUR$/, '');
+      const price = parseFloat(allMatch[2]);
+      if (asset !== 'EUR' && asset.length > 0 && price > 0) {
+        actions.push({ action: 'SELL', asset, price, percent: 100 });
+        processedLines.add(trimmedLine);
+        continue;
+      }
     }
-  }
-  
-  // CANCEL <order_id>
-  for (const match of text.matchAll(/^CANCEL\s+([A-Z0-9]{6}-[A-Z0-9]{5}-[A-Z0-9]{6})/gim)) {
-    const orderId = match[1].toUpperCase();
-    actions.push({ action: 'CANCEL', orderId });
-  }
-  
-  // CANCEL BUY/SELL <ASSET>
-  for (const match of text.matchAll(/^CANCEL\s+(BUY|SELL)\s+([A-Z0-9]{1,10})/gim)) {
-    const orderType = match[1].toLowerCase();
-    const asset = match[2].toUpperCase().replace(/Z?EUR$/, '');
-    if (asset !== 'EUR' && asset.length > 0) {
-      actions.push({ action: 'CANCEL_BY_ASSET', orderType, asset });
+    
+    // SELL <ASSET> <PERCENT>% <PRICE> - sell partial holdings
+    const partialMatch = trimmedLine.match(/^SELL\s+([A-Z0-9]{1,10})\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)/i);
+    if (partialMatch) {
+      const asset = partialMatch[1].toUpperCase().replace(/Z?EUR$/, '');
+      const percent = parseFloat(partialMatch[2]);
+      const price = parseFloat(partialMatch[3]);
+      if (asset !== 'EUR' && asset.length > 0 && percent > 0 && percent <= 100 && price > 0) {
+        actions.push({ action: 'SELL', asset, price, percent });
+        processedLines.add(trimmedLine);
+        continue;
+      }
+    }
+    
+    // SELL <ASSET> <PRICE> - sell all holdings (fallback format)
+    const sellMatch = trimmedLine.match(/^SELL\s+([A-Z0-9]{1,10})\s+(\d+(?:\.\d+)?)/i);
+    if (sellMatch && !processedLines.has(trimmedLine)) {
+      const asset = sellMatch[1].toUpperCase().replace(/Z?EUR$/, '');
+      const price = parseFloat(sellMatch[2]);
+      if (asset !== 'EUR' && asset !== 'HOLD' && asset.length > 0 && price > 0) {
+        actions.push({ action: 'SELL', asset, price, percent: 100 });
+        continue;
+      }
+    }
+    
+    // BUY <ASSET> <amount_eur> <price>
+    const buyMatch = trimmedLine.match(/^BUY\s+([A-Z0-9]{1,10})\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/i);
+    if (buyMatch) {
+      const asset = buyMatch[1].toUpperCase().replace(/Z?EUR$/, '');
+      const amountEur = parseFloat(buyMatch[2]);
+      const price = parseFloat(buyMatch[3]);
+      if (asset !== 'EUR' && asset !== 'HOLD' && asset.length > 0 && amountEur > 0 && price > 0) {
+        actions.push({ action: 'BUY', asset, amountEur, price });
+        continue;
+      }
+    }
+    
+    // HOLD [ASSET] - explicit hold
+    const holdMatch = trimmedLine.match(/^HOLD\s*([A-Z0-9]{1,10})?$/i);
+    if (holdMatch) {
+      const asset = holdMatch[1] ? holdMatch[1].toUpperCase().replace(/Z?EUR$/, '') : 'ALL';
+      actions.push({ action: 'HOLD', asset });
+      continue;
+    }
+    
+    // CANCEL <order_id>
+    const cancelMatch = trimmedLine.match(/^CANCEL\s+([A-Z0-9]{6}-[A-Z0-9]{5}-[A-Z0-9]{6})/i);
+    if (cancelMatch) {
+      actions.push({ action: 'CANCEL', orderId: cancelMatch[1].toUpperCase() });
+      continue;
+    }
+    
+    // CANCEL BUY/SELL <ASSET>
+    const cancelAssetMatch = trimmedLine.match(/^CANCEL\s+(BUY|SELL)\s+([A-Z0-9]{1,10})/i);
+    if (cancelAssetMatch) {
+      const orderType = cancelAssetMatch[1].toLowerCase();
+      const asset = cancelAssetMatch[2].toUpperCase().replace(/Z?EUR$/, '');
+      if (asset !== 'EUR' && asset.length > 0) {
+        actions.push({ action: 'CANCEL_BY_ASSET', orderType, asset });
+        continue;
+      }
     }
   }
   
@@ -197,13 +256,21 @@ async function executeCommands(actions) {
           continue;
         }
         
+        // Calculate volume based on percent (default 100%)
+        const percent = action.percent || 100;
+        const sellRatio = percent / 100;
+        const targetVolume = holding.amount * sellRatio;
+        
         const volumeAttempts = [1.0, 0.999, 0.99];
         for (const multiplier of volumeAttempts) {
-          const volume = holding.amount * multiplier;
+          const volume = targetVolume * multiplier;
           result = await kraken.limitSell(pair, volume, action.price);
           if (result?.success) {
             if (multiplier < 1.0) {
               console.log(`[AI-EXEC] Sell succeeded at ${multiplier * 100}% volume`);
+            }
+            if (percent < 100) {
+              log(`[AI-EXEC] Sold ${percent}% of ${asset} (${volume.toFixed(8)} units)`);
             }
             break;
           }

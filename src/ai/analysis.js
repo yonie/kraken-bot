@@ -12,6 +12,33 @@ const { callLLM, setConfig, getConfig } = require('./llm');
 const { buildContext } = require('./context');
 const { parseCommands, executeCommands } = require('./commands');
 
+let cachedStrategy = null;
+
+function loadStrategy() {
+  if (cachedStrategy) return cachedStrategy;
+  
+  const userStrategyPath = path.join(DATA_DIR, 'strategy.json');
+  const defaultStrategyPath = path.join(DATA_DIR, 'strategy.example.json');
+  
+  let strategyPath = defaultStrategyPath;
+  
+  if (fs.existsSync(userStrategyPath)) {
+    strategyPath = userStrategyPath;
+    log('[AI] Using user strategy.json');
+  } else {
+    log('[AI] Using default strategy.example.json');
+  }
+  
+  try {
+    const content = fs.readFileSync(strategyPath, 'utf8');
+    cachedStrategy = JSON.parse(content);
+    return cachedStrategy;
+  } catch (e) {
+    console.error('[AI] Failed to load strategy:', e.message);
+    return null;
+  }
+}
+
 let config = {
   provider: 'openrouter',
   apiKey: null,
@@ -46,6 +73,9 @@ function init(options = {}) {
 }
 
 async function runAnalysis(force = false) {
+  // Clear cached strategy to pick up changes
+  cachedStrategy = null;
+  
   if (!force && state.llmAnalysis.lastUpdate) {
     const minutes = (Date.now() - state.llmAnalysis.lastUpdate) / 60000;
     if (minutes < config.intervalMinutes) {
@@ -209,6 +239,13 @@ function buildPrompt(ctx) {
     amount: l.amount,
     fee: l.fee
   }));
+
+  const totalDeposits = depositsFormatted.filter(d => d.type === 'deposit').reduce((sum, d) => sum + d.amount, 0);
+  const totalWithdrawals = depositsFormatted.filter(d => d.type === 'withdrawal').reduce((sum, d) => sum + d.amount, 0);
+  const netChangeEUR = ctx.balanceHistory[0] && ctx.balanceHistory[ctx.balanceHistory.length - 1] 
+    ? parseFloat(ctx.balanceHistory[ctx.balanceHistory.length - 1].eur) - parseFloat(ctx.balanceHistory[0].eur) 
+    : null;
+  const tradingPnL = netChangeEUR !== null ? netChangeEUR - totalDeposits + totalWithdrawals : null;
   
   const executionResultsFormatted = ctx.recentExecutionResults.map(e => ({
     time: e.time,
@@ -250,21 +287,32 @@ function buildPrompt(ctx) {
     };
   });
   
+  const strat = loadStrategy();
+  
+  const strategySection = strat ? {
+    name: strat.name,
+    goal: strat.goal,
+    philosophy: strat.philosophy,
+    position_size_eur: strat.position_size_eur,
+    max_positions: strat.max_positions,
+    stop_loss_pct: strat.stop_loss_pct,
+    take_profit_pct: strat.take_profit_pct,
+    partial_profit_pct: strat.partial_profit_pct,
+    max_hold_hours: strat.max_hold_hours,
+    entry_rules: strat.entry_rules,
+    exit_rules: strat.exit_rules,
+    rules: strat.rules,
+    source: strat.description
+  } : null;
+  
   const jsonData = JSON.stringify({
-    strategy: {
-      goal: "Outperform BTC. Target +10% portfolio DAILY.",
-      approach: "Aggressive swing trading. High risk, quick rewards. Capitalize on crypto volatility.",
+    strategy: strategySection || {
+      goal: "Outperform BTC",
+      approach: "Swing trading",
       rules: [
-        "Spread positions across 5-15 assets (guideline, not strict)",
-        "Individual position size: typically €50-500 per asset based on conviction and liquidity",
-        "Diversify across assets - avoid over-concentration in any single position",
-        "Extreme Fear (<25) is typically a BUY signal - deploy capital across multiple assets",
-        "Extreme Greed (>75) is typically a SELL signal - take profits across positions",
-        "Cash sitting idle during a dip = missed opportunity, not prudence",
-        "Fresh deposits should be deployed quickly when conditions align",
-        "Check liquidity before buying - avoid low-volume assets that are hard to exit",
-        "Check order book depth before buying - avoid thin order books",
-        "High cash position during a dip = missed opportunity"
+        "Spread positions across assets",
+        "Manage risk appropriately",
+        "Take profits when reasonable"
       ]
     },
     time: {
@@ -326,13 +374,21 @@ function buildPrompt(ctx) {
     performance_7d: {
       portfolio_start_eur: ctx.balanceHistory[0] ? parseFloat(ctx.balanceHistory[0].eur) : null,
       portfolio_end_eur: ctx.balanceHistory[ctx.balanceHistory.length - 1] ? parseFloat(ctx.balanceHistory[ctx.balanceHistory.length - 1].eur) : null,
-      net_change_eur: ctx.balanceHistory[0] && ctx.balanceHistory[ctx.balanceHistory.length - 1] 
-        ? parseFloat(ctx.balanceHistory[ctx.balanceHistory.length - 1].eur) - parseFloat(ctx.balanceHistory[0].eur) 
-        : null,
-      deposits_eur: depositsFormatted.filter(d => d.type === 'deposit').reduce((sum, d) => sum + d.amount, 0),
-      withdrawals_eur: depositsFormatted.filter(d => d.type === 'withdrawal').reduce((sum, d) => sum + d.amount, 0),
+      net_change_eur: netChangeEUR,
+      deposits_eur: totalDeposits,
+      withdrawals_eur: totalWithdrawals,
+      trading_pnl_eur: tradingPnL,
       btc_change_pct: parseFloat(ctx.btcPriceChange),
-      explanation: "net_change_eur includes deposits/withdrawals. trading_pnl = net_change - deposits + withdrawals. Compare your trading_pnl to what you would have made if you held BTC instead.",
+      comparison: tradingPnL !== null && ctx.btcPriceChange ? {
+        your_performance_pct: ctx.balanceHistory[0] && ctx.balanceHistory[0].eur > 0 
+          ? ((tradingPnL / parseFloat(ctx.balanceHistory[0].eur)) * 100).toFixed(2)
+          : null,
+        btc_performance_pct: ctx.btcPriceChange,
+        outperformance_pct: ctx.balanceHistory[0] && ctx.balanceHistory[0].eur > 0
+          ? (((tradingPnL / parseFloat(ctx.balanceHistory[0].eur)) * 100) - parseFloat(ctx.btcPriceChange)).toFixed(2)
+          : null,
+        note: "A positive outperformance means you beat BTC. Use trading_pnl_eur for comparison, NOT net_change_eur (which includes deposits)."
+      } : null,
       history_eur: ctx.balanceHistory.map(h => parseFloat(h.eur))
     },
     positions: positionsFormatted,
@@ -351,7 +407,22 @@ function buildPrompt(ctx) {
     execution_results: executionResultsFormatted
   }, null, 2);
   
-  return `=== DATA ===
+  const loadedStrategy = loadStrategy();
+  
+  return `=== STRATEGY ===
+${loadedStrategy ? `${loadedStrategy.description || ''}
+
+Goal: ${loadedStrategy.goal}
+
+Rules:
+${(loadedStrategy.rules || []).map(r => `- ${r}`).join('\n')}
+
+Entry: ${loadedStrategy.entry_rules?.source || 'top_movers_24h'}, ${loadedStrategy.entry_rules?.gain_min_pct || 5}-${loadedStrategy.entry_rules?.gain_max_pct || 50}% gain, €${(loadedStrategy.entry_rules?.volume_min_eur || 100000).toLocaleString()}+ volume
+Exit: -${Math.abs(loadedStrategy.exit_rules?.stop_loss || 5)}% stop, +${loadedStrategy.exit_rules?.take_profit || 15}% target, ${loadedStrategy.exit_rules?.time_max_hours || 168}h max hold
+Position: €${loadedStrategy.position_size_eur || 300} per trade, max ${loadedStrategy.max_positions || 5} positions
+` : 'No strategy loaded'}
+
+=== DATA ===
 ${jsonData}
 
 === RESPONSE FORMAT ===
@@ -359,7 +430,7 @@ SENTIMENT: [bullish/neutral/bearish]
 RISK: [low/medium/high]
 
 ANALYSIS: [Your reasoning. Reference specific data. Be decisive.]
-DECISION: [What action you're taking and WHY it aligns with the +10% daily goal]
+DECISION: [What action you're taking and WHY]
 
 REQUEST: [Optional: ONE piece of data you wish you had. Skip if nothing needed.]
 
@@ -367,28 +438,42 @@ COMMANDS:
 [One command per line, or HOLD]
 
 === COMMAND SYNTAX ===
-BUY <ASSET> <eur_amount> <price> - e.g., "BUY ETH 50 3100"
-SELL <ASSET> <price> - e.g., "SELL ETH 3200" (sells ALL holdings)
-CANCEL BUY <ASSET> - e.g., "CANCEL BUY ETH"
-HOLD - no action this time
+SELL <ASSET> ALL <PRICE> - sell entire position (e.g., "SELL ETH ALL 1900")
+SELL <ASSET> 50% <PRICE> - sell half position (e.g., "SELL SOL 50% 175")
+SELL <ASSET> <PRICE> - sell all (e.g., "SELL LINK 0.82")
+BUY <ASSET> <EUR> <PRICE> - buy EUR worth (e.g., "BUY TAO 900 162")
+HOLD <ASSET> - no action for this asset
+HOLD - no action this round
 
 Note: BUY/SELL cancels existing orders for that asset first.
 `;
 }
 
 function parseResponse(response) {
+  // Try new block format first
+  let commands = null;
+  const blockMatch = response.match(/---COMMANDS---\s*([\s\S]*?)---END---/i);
+  if (blockMatch) {
+    commands = blockMatch[1].trim();
+  }
+  
+  // Fall back to original format
+  if (!commands) {
+    const commandsMatch = response.match(/COMMANDS:\s*([\s\S]*?)(?=\n\n|===|$)/i);
+    commands = commandsMatch?.[1]?.trim() || 'HOLD';
+  }
+  
   const sentimentMatch = response.match(/SENTIMENT:\s*(bullish|neutral|bearish)/i);
   const riskMatch = response.match(/RISK:\s*(low|medium|high)/i);
-  const analysisMatch = response.match(/ANALYSIS:\s*([\s\S]+?)(?=\n\s*(REQUEST|COMMANDS):)/i);
-  const requestMatch = response.match(/REQUEST:\s*(.+?)(?=\n\s*(COMMANDS):|\n\n|$)/is);
-  const commandsMatch = response.match(/COMMANDS:\s*([\s\S]*?)(?=\n\n|===|$)/i);
+  const analysisMatch = response.match(/ANALYSIS:\s*([\s\S]+?)(?=\n\s*(REQUEST|COMMANDS|DECISION):)/i);
+  const requestMatch = response.match(/REQUEST:\s*(.+?)(?=\n\s*(COMMANDS|DECISION):|\n\n|$)/is);
   
   return {
     sentiment: sentimentMatch?.[1]?.toLowerCase() || null,
     risk: riskMatch?.[1]?.toLowerCase() || null,
     analysis: analysisMatch?.[1]?.trim() || null,
     request: requestMatch?.[1]?.trim() || null,
-    commands: commandsMatch?.[1]?.trim() || 'HOLD'
+    commands: commands
   };
 }
 

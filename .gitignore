@@ -8,6 +8,10 @@ launch.json
 # Data directory (contains sensitive trading data)
 data/
 
+# User's personal strategy (override)
+# Note: strategy.example.json is tracked in git as default
+# strategy.json is user-specific and gitignored via data/ above
+
 # default Node gitignore follows
 
 # Logs
