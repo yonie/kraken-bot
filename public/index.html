@@ -1171,22 +1171,24 @@
       
       // If this is a live update (new analysis from server), add to history
       if (isLiveUpdate && analysis && analysis.lastUpdate) {
-        // Add to front of history if it's new
-        if (!analysisHistory.length || analysisHistory[0].lastUpdate !== analysis.lastUpdate) {
-          const wasViewingLatest = historyIndex === 0;
-          analysisHistory.unshift(analysis);
-          // Keep only last 100
-          if (analysisHistory.length > 100) analysisHistory = analysisHistory.slice(0, 100);
-          
-          // Only jump to latest if user was already viewing latest
-          // Otherwise, increment index to keep viewing the same historical entry
-          if (wasViewingLatest) {
-            historyIndex = 0;
-          } else {
-            historyIndex++;
-            updateHistoryNav(); // Update nav buttons but don't re-render content
-            return; // Don't re-render, keep showing the historical entry user was reading
-          }
+        // Skip if this is the same analysis we're already showing
+        if (analysisHistory.length && analysisHistory[0].lastUpdate === analysis.lastUpdate) {
+          return;
+        }
+        
+        const wasViewingLatest = historyIndex === 0;
+        analysisHistory.unshift(analysis);
+        // Keep only last 100
+        if (analysisHistory.length > 100) analysisHistory = analysisHistory.slice(0, 100);
+        
+        // Only jump to latest if user was already viewing latest
+        // Otherwise, increment index to keep viewing the same historical entry
+        if (wasViewingLatest) {
+          historyIndex = 0;
+        } else {
+          historyIndex++;
+          updateHistoryNav(); // Update nav buttons but don't re-render content
+          return; // Don't re-render, keep showing the historical entry user was reading
         }
       }
       
