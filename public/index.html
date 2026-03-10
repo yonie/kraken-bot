@@ -573,26 +573,6 @@
     </div>
     
     <div class="grid" id="cardGrid">
-      <!-- Market Context -->
-      <div class="card" data-card-id="market" draggable="true">
-        <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Market Context</h2>
-        </div>
-        <div class="card-content" id="marketContent">
-          <div class="loading">Loading...</div>
-        </div>
-      </div>
-      
-      <!-- News Headlines -->
-      <div class="card" data-card-id="news" draggable="true">
-        <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>News Headlines</h2>
-        </div>
-        <div class="card-content" id="newsContent" style="max-height: 300px; overflow-y: auto;">
-          <div class="loading">Loading...</div>
-        </div>
-      </div>
-      
       <!-- AI Analysis -->
       <div class="card" data-card-id="analysis" draggable="true">
         <div class="card-header">
@@ -628,28 +608,35 @@
         </div>
       </div>
       
-      <!-- Data Requests -->
-      <div class="card" data-card-id="questions" draggable="true">
+      <!-- Recent Closed Trades (Realized P&L) -->
+      <div class="card" data-card-id="closedPnL" draggable="true">
         <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Data Requests</h2>
-        </div>
-        <div class="card-content" id="questionsContent" style="max-height: 200px; overflow-y: auto;">
-          <div style="color: var(--text2); font-size: 0.9rem;">No data requests yet. The AI may request additional data it needs.</div>
-        </div>
-      </div>
-      
-      <!-- Deposits/Withdrawals -->
-      <div class="card" data-card-id="ledgers" draggable="true">
-        <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Deposits/Withdrawals</h2>
+          <h2><span class="drag-handle">&#9776;</span>Closed Trades P&L</h2>
         </div>
         <div class="card-content table-scroll">
           <table>
             <thead>
-              <tr><th>Type</th><th>Amount</th><th>When</th></tr>
+              <tr><th>Asset</th><th>P&L</th><th>%</th><th>Closed</th></tr>
             </thead>
-            <tbody id="ledgersTable">
-              <tr><td colspan="3" style="color: var(--text2)">No recent deposits/withdrawals</td></tr>
+            <tbody id="recentPnLTable">
+              <tr><td colspan="4" class="loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Top Movers -->
+      <div class="card" data-card-id="movers" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Top Movers (24h)</h2>
+        </div>
+        <div class="card-content table-scroll">
+          <table>
+            <thead>
+              <tr><th>Pair</th><th>Price</th><th>Range</th><th>From Low</th></tr>
+            </thead>
+            <tbody id="moversTable">
+              <tr><td colspan="4" class="loading">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -689,35 +676,48 @@
         </div>
       </div>
       
-      <!-- Recent Closed Trades (Realized P&L) -->
-      <div class="card" data-card-id="closedPnL" draggable="true">
+      <!-- Market Context -->
+      <div class="card" data-card-id="market" draggable="true">
         <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Closed Trades P&L</h2>
+          <h2><span class="drag-handle">&#9776;</span>Market Context</h2>
         </div>
-        <div class="card-content table-scroll">
-          <table>
-            <thead>
-              <tr><th>Asset</th><th>P&L</th><th>%</th><th>Closed</th></tr>
-            </thead>
-            <tbody id="recentPnLTable">
-              <tr><td colspan="4" class="loading">Loading...</td></tr>
-            </tbody>
-          </table>
+        <div class="card-content" id="marketContent">
+          <div class="loading">Loading...</div>
         </div>
       </div>
       
-      <!-- Top Movers -->
-      <div class="card" data-card-id="movers" draggable="true">
+      <!-- News Headlines -->
+      <div class="card" data-card-id="news" draggable="true">
         <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Top Movers (24h)</h2>
+          <h2><span class="drag-handle">&#9776;</span>News Headlines</h2>
+        </div>
+        <div class="card-content" id="newsContent" style="max-height: 300px; overflow-y: auto;">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+      
+      <!-- Data Requests -->
+      <div class="card" data-card-id="questions" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Data Requests</h2>
+        </div>
+        <div class="card-content" id="questionsContent" style="max-height: 200px; overflow-y: auto;">
+          <div style="color: var(--text2); font-size: 0.9rem;">No data requests yet. The AI may request additional data it needs.</div>
+        </div>
+      </div>
+      
+      <!-- Deposits/Withdrawals -->
+      <div class="card" data-card-id="ledgers" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Deposits/Withdrawals</h2>
         </div>
         <div class="card-content table-scroll">
           <table>
             <thead>
-              <tr><th>Pair</th><th>Price</th><th>Range</th><th>From Low</th></tr>
+              <tr><th>Type</th><th>Amount</th><th>When</th></tr>
             </thead>
-            <tbody id="moversTable">
-              <tr><td colspan="4" class="loading">Loading...</td></tr>
+            <tbody id="ledgersTable">
+              <tr><td colspan="3" style="color: var(--text2)">No recent deposits/withdrawals</td></tr>
             </tbody>
           </table>
         </div>
