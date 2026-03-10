@@ -72,6 +72,56 @@ Code is NOT appropriate for:
 - Interpreting market conditions
 - Making trading decisions
 
+### Principle 6: No Interpretation Layer
+
+The prompt should pass strategy and data directly to the LLM. Do NOT:
+
+| ❌ Bad | ✅ Good |
+|--------|---------|
+| Calculate "orders you can place" from cash/position size | Show cash available, show position sizes - let LLM decide |
+| Hardcode "max 5 positions" in code | Let LLM decide concentration level based on strategy |
+| Transform strategy.json into formatted text | Pass strategy.json content as-is |
+| Add "mindset" statements like "idle cash is failure" | Let LLM interpret when cash is appropriate |
+
+The LLM is the expert. It can count positions, divide cash, and make decisions. Code should only:
+- Fetch data
+- Format data into JSON structure
+- Pass strategy.json content through unchanged
+- Execute the LLM's commands
+
+### Strategy Philosophy
+
+Strategy belongs in `strategy.json` as natural language principles, not executable rules:
+
+| ❌ Code-like Strategy | ✅ Principle-based Strategy |
+|-----------------------|----------------------------|
+| `"position_size_eur": 900` | Let LLM decide sizing |
+| `"max_positions": 5` | Let LLM decide concentration |
+| `"stop_loss_pct": -3` | "Cut losses immediately on reversal" |
+| `"entry_rules": {...}` | "Rank by 7-day returns, buy top performers" |
+
+The LLM reads principles and applies judgment. Hardcoded values remove the LLM's ability to adapt.
+
+### Research-Backed Strategy
+
+When using academic research, cite the paper and adopt its method:
+
+```json
+{
+  "strategy": {
+    "name": "Momentum Trading",
+    "paper": "Tzouvanas et al. (2020) - Economics Letters",
+    "method": {
+      "formation": "Rank by 7-day returns",
+      "entry": "Buy top performers",
+      "hold": "7 days"
+    }
+  }
+}
+```
+
+Do NOT invent values that aren't in the research. The previous strategy contained "4% pullback entry" and "10-30% gain threshold" with zero research backing - they were guesses dressed as rules.
+
 ## LLM Feedback Loop
 
 The LLM can request additional data it wishes it had. This creates a direct feedback loop from the AI to development:
@@ -94,25 +144,6 @@ We have a large context window. Use it:
 - Let the LLM find patterns
 - Trust the LLM to focus on what matters
 
-## Strategy in Prompt
-
-Trading strategy goes in the prompt as natural language rules. The bot needs to know WHAT we want, not just receive raw data.
-
-```json
-"strategy": {
-  "goal": "Outperform BTC. Target +10% portfolio DAILY.",
-  "rules": [
-    "Spread positions across 5-15 assets minimum",
-    "Extreme Fear (<25) = BUY signal - deploy capital",
-    "Cash during dip = missed opportunity, not prudence",
-    "Ignore assets with < €500k volume (stale liquidity)",
-    "Position sizing: €50-500 per asset"
-  ]
-}
-```
-
-Without this, the LLM defaults to risk-averse behavior ("prudent to hold cash during uncertainty"). With it, the LLM acts aggressively to capture opportunities.
-
 ## Strategy Configuration
 
 Strategy is loaded from `data/strategy.json` (user's personal strategy) or `data/strategy.example.json` (default).
@@ -120,20 +151,7 @@ Strategy is loaded from `data/strategy.json` (user's personal strategy) or `data
 - `strategy.json` - Your personal trading strategy (gitignored, not in repo)
 - `strategy.example.json` - Default conservative strategy (in repo)
 
-Create your own `strategy.json` to override the default. Key fields:
-
-```json
-{
-  "name": "Your Strategy Name",
-  "goal": "+10% portfolio DAILY",
-  "position_size_eur": 900,
-  "max_positions": 5,
-  "stop_loss_pct": -3,
-  "take_profit_pct": 10,
-  "entry_rules": { "source": "top_movers_24h", "gain_min_pct": 10 },
-  "exit_rules": { "stop_loss": -3, "take_profit": 10, "time_max_hours": 24 }
-}
-```
+The strategy file should contain principle-based guidance, not hardcoded rules. See Principle 6 and Strategy Philosophy sections above for guidance.
 
 ## Parallel Experiments (Super Fast Learning)
 

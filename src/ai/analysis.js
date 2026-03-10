@@ -408,19 +408,10 @@ function buildPrompt(ctx) {
   }, null, 2);
   
   const loadedStrategy = loadStrategy();
+  const strategyText = loadedStrategy ? JSON.stringify(loadedStrategy, null, 2) : 'No strategy loaded';
   
   return `=== STRATEGY ===
-${loadedStrategy ? `${loadedStrategy.description || ''}
-
-Goal: ${loadedStrategy.goal}
-
-Rules:
-${(loadedStrategy.rules || []).map(r => `- ${r}`).join('\n')}
-
-Entry: ${loadedStrategy.entry_rules?.source || 'top_movers_24h'}, ${loadedStrategy.entry_rules?.gain_min_pct || 5}-${loadedStrategy.entry_rules?.gain_max_pct || 50}% gain, €${(loadedStrategy.entry_rules?.volume_min_eur || 100000).toLocaleString()}+ volume
-Exit: -${Math.abs(loadedStrategy.exit_rules?.stop_loss || 5)}% stop, +${loadedStrategy.exit_rules?.take_profit || 15}% target, ${loadedStrategy.exit_rules?.time_max_hours || 168}h max hold
-Position: €${loadedStrategy.position_size_eur || 300} per trade, max ${loadedStrategy.max_positions || 5} positions
-` : 'No strategy loaded'}
+${strategyText}
 
 === DATA ===
 ${jsonData}
