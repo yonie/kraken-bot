@@ -442,6 +442,7 @@ SELL <ASSET> ALL <PRICE> - sell entire position (e.g., "SELL ETH ALL 1900")
 SELL <ASSET> 50% <PRICE> - sell half position (e.g., "SELL SOL 50% 175")
 SELL <ASSET> <PRICE> - sell all (e.g., "SELL LINK 0.82")
 BUY <ASSET> <EUR> <PRICE> - buy EUR worth (e.g., "BUY TAO 900 162")
+CANCEL BUY <ASSET> - cancel all buy orders for asset (e.g., "CANCEL BUY ETH")
 HOLD <ASSET> - no action for this asset
 HOLD - no action this round
 
