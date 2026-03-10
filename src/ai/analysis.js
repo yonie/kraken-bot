@@ -45,6 +45,7 @@ let config = {
   model: 'x-ai/grok-3-mini-beta',
   ollamaHost: 'localhost',
   ollamaPort: 11434,
+  timeout: parseInt(process.env.OLLAMA_TIMEOUT_MS) || 180000,
   enabled: true,
   intervalMinutes: 10
 };
@@ -59,6 +60,7 @@ function init(options = {}) {
     config.model = options.model || config.model;
     config.ollamaHost = options.ollamaHost || config.ollamaHost;
     config.ollamaPort = options.ollamaPort || config.ollamaPort;
+    config.timeout = options.timeout || config.timeout;
   }
   
   setConfig({
@@ -66,10 +68,11 @@ function init(options = {}) {
     apiKey: config.apiKey,
     model: config.model,
     ollamaHost: config.ollamaHost,
-    ollamaPort: config.ollamaPort
+    ollamaPort: config.ollamaPort,
+    timeout: config.timeout
   });
   
-  log(`[AI] Initialized with provider: ${config.provider}, model: ${config.model}`);
+  log(`[AI] Initialized with provider: ${config.provider}, model: ${config.model}, timeout: ${(config.timeout/1000).toFixed(0)}s`);
 }
 
 async function runAnalysis(force = false) {
