@@ -295,8 +295,8 @@ function buildPrompt(ctx) {
   const strategyText = loadedStrategy || 'No strategy loaded';
   
   const pastAnalysesSection = ctx.pastAnalyses?.length > 0
-    ? '\n=== PAST ADVICE ===\nPrevious reasoning for context. Think independently - these may be from earlier strategy versions.\n\n' +
-      ctx.pastAnalyses.slice(0, 20).map(h => 
+    ? '\n=== PAST ANALYSES ===\n(Previous cycles - for reference only)\n\n' +
+      ctx.pastAnalyses.slice(0, 10).map(h => 
         `[${h.time}]\n${h.reasoning || 'No reasoning'}\n`
       ).join('\n')
     : '';
