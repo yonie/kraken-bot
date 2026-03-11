@@ -446,13 +446,7 @@ async function buildContext() {
     balanceHistory,
     weekChangeEUR,
     weekChangeExclDeposits,
-    btcPriceChange,
-    pastAnalyses: state.llmHistory.map(h => ({
-      time: new Date(h.lastUpdate).toLocaleString(),
-      sentiment: h.marketSentiment,
-      risk: h.riskAssessment,
-      reasoning: h.analysis
-    }))
+    btcPriceChange
   };
 }
 

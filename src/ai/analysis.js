@@ -294,13 +294,6 @@ function buildPrompt(ctx) {
   const loadedStrategy = loadStrategy();
   const strategyText = loadedStrategy || 'No strategy loaded';
   
-  const pastAnalysesSection = ctx.pastAnalyses?.length > 0
-    ? '\n=== PAST ANALYSES ===\n(Previous cycles - for reference only)\n\n' +
-      ctx.pastAnalyses.slice(0, 10).map(h => 
-        `[${h.time}]\n${h.reasoning || 'No reasoning'}\n`
-      ).join('\n')
-    : '';
-  
   const jsonData = JSON.stringify({
     time: {
       utc: ctx.sessionInfo.utcTime,
@@ -399,7 +392,7 @@ ${strategyText}
 
 === DATA ===
 ${jsonData}
-${pastAnalysesSection}
+
 === RESPONSE FORMAT ===
 SENTIMENT: [bullish/neutral/bearish]
 RISK: [low/medium/high]
