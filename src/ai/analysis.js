@@ -17,21 +17,20 @@ let cachedStrategy = null;
 function loadStrategy() {
   if (cachedStrategy) return cachedStrategy;
   
-  const userStrategyPath = path.join(DATA_DIR, 'strategy.json');
-  const defaultStrategyPath = path.join(DATA_DIR, 'strategy.example.json');
+  const userStrategyPath = path.join(DATA_DIR, 'strategy.md');
+  const defaultStrategyPath = path.join(DATA_DIR, 'strategy.example.md');
   
   let strategyPath = defaultStrategyPath;
   
   if (fs.existsSync(userStrategyPath)) {
     strategyPath = userStrategyPath;
-    log('[AI] Using user strategy.json');
+    log('[AI] Using user strategy.md');
   } else {
-    log('[AI] Using default strategy.example.json');
+    log('[AI] Using default strategy.example.md');
   }
   
   try {
-    const content = fs.readFileSync(strategyPath, 'utf8');
-    cachedStrategy = JSON.parse(content);
+    cachedStrategy = fs.readFileSync(strategyPath, 'utf8');
     return cachedStrategy;
   } catch (e) {
     console.error('[AI] Failed to load strategy:', e.message);
@@ -222,8 +221,10 @@ function buildPrompt(ctx) {
   const moversFormatted = ctx.movers.slice(0, 10).map(m => ({
     pair: m.pair.replace(/Z?EUR$/, ''),
     price: m.price,
+    change_7d_pct: m.change7dPct,
     change_24h_pct: m.change24hPct,
-    volume_eur: m.volumeEur
+    volume_eur: m.volumeEur,
+    ohlc_7d: ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null
   }));
   
   const recentTradesFormatted = ctx.recentTrades.slice(0, 10).map(t => ({
@@ -290,34 +291,10 @@ function buildPrompt(ctx) {
     };
   });
   
-  const strat = loadStrategy();
-  
-  const strategySection = strat ? {
-    name: strat.name,
-    goal: strat.goal,
-    philosophy: strat.philosophy,
-    position_size_eur: strat.position_size_eur,
-    max_positions: strat.max_positions,
-    stop_loss_pct: strat.stop_loss_pct,
-    take_profit_pct: strat.take_profit_pct,
-    partial_profit_pct: strat.partial_profit_pct,
-    max_hold_hours: strat.max_hold_hours,
-    entry_rules: strat.entry_rules,
-    exit_rules: strat.exit_rules,
-    rules: strat.rules,
-    source: strat.description
-  } : null;
+  const loadedStrategy = loadStrategy();
+  const strategyText = loadedStrategy || 'No strategy loaded';
   
   const jsonData = JSON.stringify({
-    strategy: strategySection || {
-      goal: "Outperform BTC",
-      approach: "Swing trading",
-      rules: [
-        "Spread positions across assets",
-        "Manage risk appropriately",
-        "Take profits when reasonable"
-      ]
-    },
     time: {
       utc: ctx.sessionInfo.utcTime,
       session: ctx.sessionInfo.session,
@@ -404,14 +381,12 @@ function buildPrompt(ctx) {
       created: o.created
     })),
     top_by_volume: topByVolumeFormatted,
-    top_movers_24h: moversFormatted,
+    top_movers_7d: moversFormatted,
+    regime_warning: ctx.regimeWarning,
     recent_trades_7d: recentTradesFormatted,
     deposits_withdrawals_7d: depositsFormatted,
     execution_results: executionResultsFormatted
   }, null, 2);
-  
-  const loadedStrategy = loadStrategy();
-  const strategyText = loadedStrategy ? JSON.stringify(loadedStrategy, null, 2) : 'No strategy loaded';
   
   return `=== STRATEGY ===
 ${strategyText}

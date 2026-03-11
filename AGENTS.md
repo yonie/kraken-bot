@@ -80,18 +80,18 @@ The prompt should pass strategy and data directly to the LLM. Do NOT:
 |--------|---------|
 | Calculate "orders you can place" from cash/position size | Show cash available, show position sizes - let LLM decide |
 | Hardcode "max 5 positions" in code | Let LLM decide concentration level based on strategy |
-| Transform strategy.json into formatted text | Pass strategy.json content as-is |
+| Transform strategy.md into formatted text | Pass strategy.md content as-is |
 | Add "mindset" statements like "idle cash is failure" | Let LLM interpret when cash is appropriate |
 
 The LLM is the expert. It can count positions, divide cash, and make decisions. Code should only:
 - Fetch data
 - Format data into JSON structure
-- Pass strategy.json content through unchanged
+- Pass strategy.md content through unchanged
 - Execute the LLM's commands
 
 ### Strategy Philosophy
 
-Strategy belongs in `strategy.json` as natural language principles, not executable rules:
+Strategy belongs in `strategy.md` as natural language principles, not executable rules:
 
 | ❌ Code-like Strategy | ✅ Principle-based Strategy |
 |-----------------------|----------------------------|
@@ -106,18 +106,15 @@ The LLM reads principles and applies judgment. Hardcoded values remove the LLM's
 
 When using academic research, cite the paper and adopt its method:
 
-```json
-{
-  "strategy": {
-    "name": "Momentum Trading",
-    "paper": "Tzouvanas et al. (2020) - Economics Letters",
-    "method": {
-      "formation": "Rank by 7-day returns",
-      "entry": "Buy top performers",
-      "hold": "7 days"
-    }
-  }
-}
+```markdown
+# Momentum Trading Strategy
+
+> Paper: Tzouvanas et al. (2020) - Economics Letters
+
+## Method
+- Formation: Rank by 7-day returns
+- Entry: Buy top performers
+- Hold: 7 days
 ```
 
 Do NOT invent values that aren't in the research. The previous strategy contained "4% pullback entry" and "10-30% gain threshold" with zero research backing - they were guesses dressed as rules.
@@ -146,12 +143,12 @@ We have a large context window. Use it:
 
 ## Strategy Configuration
 
-Strategy is loaded from `data/strategy.json` (user's personal strategy) or `data/strategy.example.json` (default).
+Strategy is loaded from `data/strategy.md` (user's personal strategy) or `data/strategy.example.md` (default).
 
-- `strategy.json` - Your personal trading strategy (gitignored, not in repo)
-- `strategy.example.json` - Default conservative strategy (in repo)
+- `strategy.md` - Your personal trading strategy (gitignored, not in repo)
+- `strategy.example.md` - Default conservative strategy (in repo)
 
-The strategy file should contain principle-based guidance, not hardcoded rules. See Principle 6 and Strategy Philosophy sections above for guidance.
+The strategy file contains natural language principles. See Strategy Philosophy sections above for guidance.
 
 ## Parallel Experiments (Super Fast Learning)
 
@@ -269,7 +266,7 @@ Compare outputs:
 
 ### Strategy Iteration Workflow
 
-1. Write/update strategy in `data/strategy.json`
+1. Write/update strategy in `data/strategy.md`
 2. Run 5-7 parallel tests with different market conditions
 3. Review outputs for correctness and format
 4. Adjust strategy rules, repeat tests

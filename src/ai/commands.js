@@ -248,8 +248,22 @@ async function executeCommands(actions) {
       let result;
       
       if (action.action === 'SELL') {
-        const asset = state.pairs[pair]?.base;
-        const holding = state.wallet[asset];
+        const baseAsset = state.pairs[pair]?.base;
+        // Check for staked/standard variants (DOT.S, DOT.P, DOT)
+        let holding = state.wallet[baseAsset];
+        if (!holding || holding.amount <= 0) {
+          // Try staked variants
+          for (const suffix of ['.S', '.P']) {
+            const stakedAsset = baseAsset + suffix;
+            if (state.wallet[stakedAsset]?.amount > 0) {
+              log(`[AI-EXEC] Found staked asset ${stakedAsset} instead of ${baseAsset}`);
+              holding = state.wallet[stakedAsset];
+              break;
+            }
+          }
+        }
+        
+        log(`[AI-EXEC] SELL ${action.asset}: pair=${pair}, baseAsset=${baseAsset}, holding=${holding?.amount}, price=${action.price}`);
         
         if (!holding || holding.amount <= 0) {
           results.push({ ...action, success: false, error: 'no_holdings' });
@@ -264,20 +278,23 @@ async function executeCommands(actions) {
         const volumeAttempts = [1.0, 0.999, 0.99];
         for (const multiplier of volumeAttempts) {
           const volume = targetVolume * multiplier;
+          log(`[AI-EXEC] Attempting SELL: ${volume.toFixed(8)} ${baseAsset} @ ${action.price}`);
           result = await kraken.limitSell(pair, volume, action.price);
           if (result?.success) {
             if (multiplier < 1.0) {
               console.log(`[AI-EXEC] Sell succeeded at ${multiplier * 100}% volume`);
             }
             if (percent < 100) {
-              log(`[AI-EXEC] Sold ${percent}% of ${asset} (${volume.toFixed(8)} units)`);
+              log(`[AI-EXEC] Sold ${percent}% of ${baseAsset} (${volume.toFixed(8)} units)`);
             }
             break;
           }
-          if (multiplier < 0.99 || !result?.error?.includes?.('volume')) {
+          // Retry on volume errors OR insufficient funds (Kraken floating-point precision issue)
+          const errMsg = result?.error || '';
+          if (multiplier < 0.99 || (!errMsg.includes('volume') && !errMsg.includes('Insufficient funds'))) {
             break;
           }
-          console.log(`[AI-EXEC] Sell at ${multiplier * 100}% failed, retrying with less...`);
+          console.log(`[AI-EXEC] Sell at ${multiplier * 100}% failed (${errMsg}), retrying with less...`);
           await new Promise(r => setTimeout(r, 500));
         }
         

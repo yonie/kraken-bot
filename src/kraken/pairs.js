@@ -8,7 +8,12 @@ const { getClient, getCountryCode } = require('./api');
 
 function findPairForAsset(assetName) {
   if (!state.pairs || !assetName) return null;
-  const normalized = assetName.toUpperCase().trim();
+  let normalized = assetName.toUpperCase().trim();
+  
+  // Handle staked/staking variants: DOT.S, DOT.P -> DOT
+  if (normalized.includes('.')) {
+    normalized = normalized.split('.')[0];
+  }
   
   if (state.assetToPairMap[normalized]) {
     return state.assetToPairMap[normalized];

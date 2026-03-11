@@ -150,16 +150,36 @@ async function buildContext() {
     .sort((a, b) => (b.volumeEur || 0) - (a.volumeEur || 0))
     .slice(0, 20);
   
-  const movers = Object.entries(state.ticker)
-    .map(([pair, t]) => ({ pair, ...t }))
-    .sort((a, b) => b.change24hPct - a.change24hPct)
-    .slice(0, 20);
-  
   for (const t of topByVolume) {
     positionPairs.add(t.pair);
   }
   
   const ohlcData = await kraken.fetchOHLCForPairs([...positionPairs]);
+  
+  // Calculate 7-day momentum from OHLC (formation period per Tzouvanas et al.)
+  // This is critical: we rank by 7-day returns, NOT 24h spikes
+  const ohlcReturns = {};
+  for (const [pair, candles] of Object.entries(ohlcData)) {
+    if (candles && candles.length >= 7) {
+      const currentPrice = candles[candles.length - 1].close;
+      const price7dAgo = candles[candles.length - 7].close;
+      if (price7dAgo > 0) {
+        ohlcReturns[pair] = ((currentPrice - price7dAgo) / price7dAgo) * 100;
+      }
+    }
+  }
+  
+  // Rank by 7-day momentum (correct implementation per academic research)
+  // Filter out assets without 7-day data, then sort by formation period returns
+  const movers = Object.entries(state.ticker)
+    .map(([pair, t]) => ({
+      pair,
+      ...t,
+      change7dPct: ohlcReturns[pair] !== undefined ? ohlcReturns[pair] : null
+    }))
+    .filter(m => m.change7dPct !== null && !isNaN(m.change7dPct))
+    .sort((a, b) => b.change7dPct - a.change7dPct)
+    .slice(0, 20);
   
   const positionPairsArray = [...positionPairs].filter(p => {
     const asset = p.replace(/Z?EUR$/, '').replace(/^X+/, '');
@@ -394,6 +414,20 @@ async function buildContext() {
     }
   }
   
+  // Market regime filter: pause momentum during extreme fear + high BTC dominance
+  // Per academic research: momentum strategies crash during risk-off regimes
+  const fearIndex = state.greedIndex || 50;
+  const btcDom = globalMarket?.btcDominance || 0;
+  const shouldPauseMomentum = fearIndex < 25 && btcDom > 55;
+  
+  const regimeWarning = shouldPauseMomentum ? {
+    active: true,
+    fear_index: fearIndex,
+    btc_dominance_pct: btcDom,
+    condition: 'Fear < 25 AND BTC dominance > 55%',
+    recommendation: 'MOMENTUM PAUSE: Consider HOLD/SELL only, no new entries. Capital flight to BTC makes altcoin momentum unreliable.'
+  } : { active: false };
+  
   return {
     sessionInfo,
     globalMarket,
@@ -426,7 +460,8 @@ async function buildContext() {
     balanceHistory,
     weekChangeEUR,
     weekChangeExclDeposits,
-    btcPriceChange
+    btcPriceChange,
+    regimeWarning
   };
 }
 

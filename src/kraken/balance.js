@@ -33,6 +33,12 @@ async function fetchBalance() {
         }
       }
       
+      // Log all non-EUR holdings for debugging
+      const holdings = Object.keys(state.wallet).filter(a => a !== 'ZEUR' && a !== 'EUR');
+      if (holdings.length > 0) {
+        log(`[KRAKEN] Holdings: ${holdings.map(a => `${a}:${state.wallet[a].amount.toFixed(4)}`).join(', ')}`);
+      }
+      
       for (const asset in state.wallet) {
         if (asset !== 'ZEUR' && asset !== 'EUR') {
           const pair = findPairForAsset(asset);
