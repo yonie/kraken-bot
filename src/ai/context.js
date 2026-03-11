@@ -414,20 +414,6 @@ async function buildContext() {
     }
   }
   
-  // Market regime filter: pause momentum during extreme fear + high BTC dominance
-  // Per academic research: momentum strategies crash during risk-off regimes
-  const fearIndex = state.greedIndex || 50;
-  const btcDom = globalMarket?.btcDominance || 0;
-  const shouldPauseMomentum = fearIndex < 25 && btcDom > 55;
-  
-  const regimeWarning = shouldPauseMomentum ? {
-    active: true,
-    fear_index: fearIndex,
-    btc_dominance_pct: btcDom,
-    condition: 'Fear < 25 AND BTC dominance > 55%',
-    recommendation: 'MOMENTUM PAUSE: Consider HOLD/SELL only, no new entries. Capital flight to BTC makes altcoin momentum unreliable.'
-  } : { active: false };
-  
   return {
     sessionInfo,
     globalMarket,
@@ -461,7 +447,12 @@ async function buildContext() {
     weekChangeEUR,
     weekChangeExclDeposits,
     btcPriceChange,
-    regimeWarning
+    pastAnalyses: state.llmHistory.map(h => ({
+      time: new Date(h.lastUpdate).toLocaleString(),
+      sentiment: h.marketSentiment,
+      risk: h.riskAssessment,
+      reasoning: h.analysis
+    }))
   };
 }
 

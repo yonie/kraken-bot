@@ -294,6 +294,13 @@ function buildPrompt(ctx) {
   const loadedStrategy = loadStrategy();
   const strategyText = loadedStrategy || 'No strategy loaded';
   
+  const pastAnalysesSection = ctx.pastAnalyses?.length > 0
+    ? '\n=== PAST ADVICE ===\nPrevious reasoning for context. Think independently - these may be from earlier strategy versions.\n\n' +
+      ctx.pastAnalyses.slice(0, 20).map(h => 
+        `[${h.time}]\n${h.reasoning || 'No reasoning'}\n`
+      ).join('\n')
+    : '';
+  
   const jsonData = JSON.stringify({
     time: {
       utc: ctx.sessionInfo.utcTime,
@@ -382,7 +389,6 @@ function buildPrompt(ctx) {
     })),
     top_by_volume: topByVolumeFormatted,
     top_movers_7d: moversFormatted,
-    regime_warning: ctx.regimeWarning,
     recent_trades_7d: recentTradesFormatted,
     deposits_withdrawals_7d: depositsFormatted,
     execution_results: executionResultsFormatted
@@ -393,25 +399,24 @@ ${strategyText}
 
 === DATA ===
 ${jsonData}
-
+${pastAnalysesSection}
 === RESPONSE FORMAT ===
 SENTIMENT: [bullish/neutral/bearish]
 RISK: [low/medium/high]
 
-ANALYSIS: [Your reasoning. Reference specific data. Be decisive.]
-DECISION: [What action you're taking and WHY]
+ANALYSIS: [Plain language reasoning. What's happening and why. Be decisive.]
+DECISION: [Your action and why]
 
-REQUEST: [Optional: ONE piece of data you wish you had. Skip if nothing needed.]
+REQUEST: [Optional: data you wish you had. Skip if nothing needed.]
 
 COMMANDS:
 [One command per line, or HOLD]
 
 === COMMAND SYNTAX ===
-SELL <ASSET> ALL <PRICE> - sell entire position (e.g., "SELL ETH ALL 1900")
-SELL <ASSET> 50% <PRICE> - sell half position (e.g., "SELL SOL 50% 175")
-SELL <ASSET> <PRICE> - sell all (e.g., "SELL LINK 0.82")
-BUY <ASSET> <EUR> <PRICE> - buy EUR worth (e.g., "BUY TAO 900 162")
-CANCEL BUY <ASSET> - cancel all buy orders for asset (e.g., "CANCEL BUY ETH")
+SELL <ASSET> <PRICE> - sell entire position
+SELL <ASSET> 50% <PRICE> - sell partial (e.g., 25%, 50%)
+BUY <ASSET> <EUR> <PRICE> - buy EUR worth
+CANCEL BUY <ASSET> - cancel all buy orders for this asset
 HOLD <ASSET> - no action for this asset
 HOLD - no action this round
 
