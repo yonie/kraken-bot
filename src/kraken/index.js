@@ -49,6 +49,7 @@ module.exports = {
   fetchBalance: balance.fetchBalance,
   fetchLedgers: balance.fetchLedgers,
   getEnrichedPositions: balance.getEnrichedPositions,
+  calculateTradeAnalytics: balance.calculateTradeAnalytics,
   
   // Trade history
   fetchAllTradeHistory: history.fetchAllTradeHistory,

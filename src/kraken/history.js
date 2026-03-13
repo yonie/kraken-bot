@@ -5,7 +5,7 @@
 
 const { state, log, saveTradeHistory } = require('../state');
 const { waitForRateLimit } = require('./api');
-const { getAssetFromPair, buildCostBasis } = require('./balance');
+const { getAssetFromPair, calculateTradeAnalytics } = require('./balance');
 
 function updateRecentTrades(count = 200) {
   state.trades = Object.entries(state.fullTradeHistory.trades)
@@ -77,7 +77,7 @@ async function fetchNewTrades() {
     log(`[KRAKEN] Found ${newTradesCount} new trades (total: ${state.fullTradeHistory.totalCount})`);
   }
   
-  buildCostBasis();
+  calculateTradeAnalytics();
   updateRecentTrades();
   
   return state.fullTradeHistory;
@@ -120,7 +120,7 @@ async function fetchFullTradeHistory() {
   state.fullTradeHistory.lastFetchTime = Date.now();
   saveTradeHistory();
   log(`[KRAKEN] Loaded ${state.fullTradeHistory.totalCount} total trades`);
-  buildCostBasis();
+  calculateTradeAnalytics();
   updateRecentTrades();
   
   return state.fullTradeHistory;

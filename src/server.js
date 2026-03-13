@@ -268,22 +268,21 @@ function getAssetDetails(assetName) {
     }
   }
   
-  // Get cost basis info
-  let costBasisInfo = null;
-  for (const key of Object.keys(state.costBasis)) {
-    const cleanKey = key.replace(/^[XZ]+/, '').replace(/\.S$/, '');
-    if (cleanKey === normalizedAsset || key === assetName) {
-      const cb = state.costBasis[key];
-      costBasisInfo = {
-        totalInvested: cb.totalInvested,
-        totalReturned: cb.totalReturned,
-        realizedPnL: cb.realizedPnL,
-        openLots: cb.lots.filter(l => l.remaining > 0).length,
-        completedTradesCount: cb.completedTrades.length
-      };
-      break;
-    }
-  }
+  // Get cost basis info from trade analytics
+  const assetActivity = (state.tradeAnalytics.recentActivity || [])
+    .filter(t => {
+      const cleanAsset = t.asset.replace(/^[XZ]+/, '').replace(/\.S$/, '');
+      return cleanAsset === normalizedAsset || t.asset === assetName;
+    });
+  
+  const costBasisInfo = position ? {
+    avgEntryPrice: position.avgCost,
+    unrealizedPnL: position.unrealizedPnL,
+    unrealizedPnLPct: position.unrealizedPct,
+    holdingDays: position.holdingDays,
+    realizedPnL: assetActivity.reduce((sum, t) => sum + t.pnl, 0),
+    completedTradesCount: assetActivity.length
+  } : null;
   
   // Get recent trades for this asset (both buys and sells)
   // Get all trades for this specific asset from last 7 days

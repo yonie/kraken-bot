@@ -3,7 +3,7 @@
  * Balance, Ledger & Position Management
  */
 
-const { state, log, saveTradeHistory, saveCostBasis, saveAnalytics } = require('../state');
+const { state, log, saveTradeHistory, saveAnalytics } = require('../state');
 const { waitForRateLimit, api } = require('./api');
 const { findPairForAsset, getAssetFromPair } = require('./pairs');
 
@@ -94,71 +94,19 @@ async function fetchLedgers(days = 7) {
   });
 }
 
-function buildCostBasis() {
+/**
+ * Calculate trade analytics from trade history
+ * Called after trade history is loaded/updated
+ */
+function calculateTradeAnalytics() {
+  if (!state.fullTradeHistory?.trades) return;
+  
   const trades = Object.values(state.fullTradeHistory.trades)
     .sort((a, b) => a.time - b.time);
   
-  state.costBasis = {};
+  // Track positions by asset to calculate P&L
+  const positions = {};
   
-  for (const trade of trades) {
-    const asset = getAssetFromPair(trade.pair);
-    const amount = parseFloat(trade.vol);
-    const price = parseFloat(trade.price);
-    const cost = parseFloat(trade.cost);
-    
-    if (!state.costBasis[asset]) {
-      state.costBasis[asset] = {
-        lots: [],
-        totalInvested: 0,
-        totalReturned: 0,
-        realizedPnL: 0,
-        completedTrades: []
-      };
-    }
-    
-    const cb = state.costBasis[asset];
-    
-    if (trade.type === 'buy') {
-      cb.lots.push({ price, amount, remaining: amount, time: trade.time });
-      cb.totalInvested += cost;
-    } else if (trade.type === 'sell') {
-      let remaining = amount;
-      let costBasisUsed = 0;
-      let amountMatched = 0;
-      
-      while (remaining > 0 && cb.lots.length > 0) {
-        const lot = cb.lots[0];
-        const used = Math.min(remaining, lot.remaining);
-        costBasisUsed += used * lot.price;
-        amountMatched += used;
-        lot.remaining -= used;
-        remaining -= used;
-        
-        if (lot.remaining <= 0) {
-          cb.lots.shift();
-        }
-      }
-      
-      const matchedSaleValue = amountMatched > 0 ? (amountMatched / amount) * cost : 0;
-      const pnl = matchedSaleValue - costBasisUsed;
-      
-      if (amountMatched > 0) {
-        cb.realizedPnL += pnl;
-      }
-      cb.totalReturned += cost;
-      
-      cb.completedTrades.push({
-        sellTime: trade.time,
-        sellPrice: price,
-        amount,
-        amountMatched,
-        pnl: amountMatched > 0 ? pnl : 0,
-        pnlPercent: costBasisUsed > 0 ? (pnl / costBasisUsed) * 100 : 0
-      });
-    }
-  }
-  
-  // Build analytics summary
   let totalPnL = 0;
   let wins = 0;
   let losses = 0;
@@ -169,35 +117,69 @@ function buildCostBasis() {
   const recentActivity = [];
   const oneWeekAgo = (Date.now() - (7 * 24 * 60 * 60 * 1000)) / 1000;
   
-  for (const asset in state.costBasis) {
-    const cb = state.costBasis[asset];
-    totalPnL += cb.realizedPnL;
+  for (const trade of trades) {
+    const asset = getAssetFromPair(trade.pair);
+    const amount = parseFloat(trade.vol);
+    const price = parseFloat(trade.price);
+    const cost = parseFloat(trade.cost);
     
-    for (const t of cb.completedTrades) {
-      if (t.pnl >= 0) wins++;
-      else losses++;
+    if (!positions[asset]) {
+      positions[asset] = { lots: [], totalBought: 0, totalSold: 0 };
+    }
+    
+    const pos = positions[asset];
+    
+    if (trade.type === 'buy') {
+      pos.lots.push({ price, amount, time: trade.time });
+      pos.totalBought += amount;
+    } else if (trade.type === 'sell') {
+      let remaining = amount;
+      let costBasisUsed = 0;
+      let amountMatched = 0;
       
-      // Only count 7-day trades for weekly stats
-      if (t.sellTime >= oneWeekAgo) {
-        weeklyTrades++;
-        weeklyPnL += t.pnl;
-        if (t.pnl >= 0) weeklyWins++;
-        else weeklyLosses++;
+      // Match against lots (FIFO)
+      while (remaining > 0 && pos.lots.length > 0) {
+        const lot = pos.lots[0];
+        const used = Math.min(remaining, lot.amount);
+        costBasisUsed += used * lot.price;
+        amountMatched += used;
+        lot.amount -= used;
+        remaining -= used;
+        
+        if (lot.amount <= 0.0000001) {
+          pos.lots.shift();
+        }
       }
       
-      recentActivity.push({
-        asset,
-        pnl: t.pnl,
-        pnlPercent: t.pnlPercent,
-        sellTime: t.sellTime,
-        sellPrice: t.sellPrice
-      });
+      pos.totalSold += amount;
+      
+      const matchedSaleValue = amountMatched > 0 ? (amountMatched / amount) * cost : cost;
+      const pnl = matchedSaleValue - costBasisUsed;
+      
+      if (amountMatched > 0) {
+        totalPnL += pnl;
+        if (pnl >= 0) wins++;
+        else losses++;
+        
+        if (trade.time >= oneWeekAgo) {
+          weeklyTrades++;
+          weeklyPnL += pnl;
+          if (pnl >= 0) weeklyWins++;
+          else weeklyLosses++;
+          
+          recentActivity.push({
+            asset,
+            pnl,
+            pnlPercent: costBasisUsed > 0 ? (pnl / costBasisUsed) * 100 : 0,
+            sellTime: trade.time,
+            sellPrice: price
+          });
+        }
+      }
     }
   }
   
   recentActivity.sort((a, b) => b.sellTime - a.sellTime);
-  
-  const displayedTrades = recentActivity.slice(0, 50);
   
   state.tradeAnalytics = {
     lastUpdate: Date.now(),
@@ -213,86 +195,140 @@ function buildCostBasis() {
       winRate: (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0,
       weeklyWinRate: weeklyTrades > 0 ? (weeklyWins / weeklyTrades) * 100 : 0
     },
-    recentActivity: displayedTrades
+    recentActivity: recentActivity.slice(0, 50)
   };
   
-  saveCostBasis();
+  // Store positions for use in getEnrichedPositions
+  state._positionLots = positions;
+  
   saveAnalytics();
 }
 
+/**
+ * Get enriched positions calculated from trade history
+ * Calculates avg entry price, P&L, and holding days from actual trade history
+ */
 function getEnrichedPositions() {
   const positions = {};
   
+  if (!state.fullTradeHistory?.trades) {
+    return positions;
+  }
+  
+  // First, build position lots from trade history
+  const positionLots = {};
+  const assetTrades = {};
+  
+  // Group trades by asset
+  for (const [id, trade] of Object.entries(state.fullTradeHistory.trades)) {
+    const asset = getAssetFromPair(trade.pair);
+    if (!assetTrades[asset]) assetTrades[asset] = [];
+    assetTrades[asset].push({
+      time: trade.time,
+      type: trade.type,
+      volume: parseFloat(trade.vol),
+      price: parseFloat(trade.price)
+    });
+  }
+  
+  // Sort trades by time (oldest first)
+  for (const asset in assetTrades) {
+    assetTrades[asset].sort((a, b) => a.time - b.time);
+  }
+  
+  // Calculate lots for each asset
+  for (const asset in assetTrades) {
+    const lots = [];
+    for (const trade of assetTrades[asset]) {
+      if (trade.type === 'buy') {
+        lots.push({ price: trade.price, amount: trade.volume, time: trade.time });
+      } else if (trade.type === 'sell') {
+        let remaining = trade.volume;
+        while (remaining > 0 && lots.length > 0) {
+          const lot = lots[0];
+          const used = Math.min(remaining, lot.amount);
+          lot.amount -= used;
+          remaining -= used;
+          if (lot.amount <= 0.0000001) {
+            lots.shift();
+          }
+        }
+      }
+    }
+    positionLots[asset] = lots;
+  }
+  
+  // Now enrich wallet positions
   for (const asset in state.wallet) {
     if (asset === 'ZEUR' || asset === 'EUR' || asset === 'ZUSD' || asset === 'USD') continue;
     
     const walletEntry = state.wallet[asset];
     const amount = walletEntry.amount;
     
-    if (amount <= 0 || walletEntry.value < 0.01) continue;
+    if (amount <= 0) continue;
     
     const pair = findPairForAsset(asset);
     const currentPrice = pair && state.ticker[pair] ? state.ticker[pair].price : 0;
     const currentValue = amount * currentPrice;
     
+    // Filter by calculated value, not wallet value
     if (currentValue < 1) continue;
     
-    const cb = state.costBasis[asset];
-    let avgCost = currentPrice;
-    let costBasis = currentValue;
-    let oldestTime = Date.now();
+    // Calculate avg entry price from remaining lots
+    const lots = positionLots[asset] || [];
+    let totalCost = 0;
+    let totalLotAmount = 0;
+    let oldestLotTime = null;
     
-    if (cb && cb.lots && cb.lots.length > 0) {
-      let totalCost = 0;
-      let totalAmount = 0;
-      
-      for (const lot of cb.lots) {
-        if (lot.remaining > 0) {
-          totalAmount += lot.remaining;
-          totalCost += lot.remaining * lot.price;
-          const lotTime = lot.time > 1e12 ? lot.time : lot.time * 1000;
-          oldestTime = Math.min(oldestTime, lotTime);
+    for (const lot of lots) {
+      if (lot.amount > 0) {
+        totalCost += lot.amount * lot.price;
+        totalLotAmount += lot.amount;
+        if (oldestLotTime === null || lot.time < oldestLotTime) {
+          oldestLotTime = lot.time;
         }
-      }
-      
-      if (totalAmount > 0) {
-        avgCost = totalCost / totalAmount;
-        costBasis = totalCost;
       }
     }
     
-    let holdingStartTime = oldestTime;
-    if (state.fullTradeHistory && state.fullTradeHistory.trades) {
-      const assetTrades = Object.entries(state.fullTradeHistory.trades)
-        .filter(([id, trade]) => {
-          const tradePair = trade.pair;
-          const tradeAsset = tradePair.replace(/Z?EUR$/, '').replace(/^X+/, '');
-          return tradeAsset === asset || tradePair.includes(asset);
-        })
-        .map(([id, trade]) => ({
-          time: trade.time > 1e12 ? trade.time : trade.time * 1000,
-          volume: parseFloat(trade.vol),
-          type: trade.type
-        }))
-        .sort((a, b) => b.time - a.time);
-      
+    const avgCost = totalLotAmount > 0 ? totalCost / totalLotAmount : currentPrice;
+    const costBasis = totalLotAmount > 0 ? totalCost : currentValue;
+    
+    // Calculate holding days by walking trade history backward
+    let holdingStartTime = null;
+    if (assetTrades[asset] && assetTrades[asset].length > 0) {
+      // Walk backward from most recent trade
+      const trades = [...assetTrades[asset]].sort((a, b) => b.time - a.time);
       let runningPosition = amount;
-      for (const trade of assetTrades) {
+      
+      for (const trade of trades) {
         if (trade.type === 'buy') {
           runningPosition -= trade.volume;
         } else {
           runningPosition += trade.volume;
         }
+        
         if (runningPosition <= 0.0001) {
+          // Position was opened after this trade
           holdingStartTime = trade.time;
           break;
         }
-        holdingStartTime = trade.time;
+      }
+      
+      // If we never hit zero, position was opened before first trade
+      // Use oldest lot time or first trade
+      if (holdingStartTime === null) {
+        holdingStartTime = oldestLotTime || assetTrades[asset][0].time;
       }
     }
     
+    const holdingDays = holdingStartTime 
+      ? Math.floor((Date.now() / 1000 - holdingStartTime) / 86400)
+      : 0;
+    
+    // Ensure holdingDays is valid
+    const validHoldingDays = holdingDays >= 0 ? holdingDays : 0;
+    
     const unrealizedPnL = currentValue - costBasis;
-    const holdingDays = Math.floor((Date.now() - holdingStartTime) / (86400 * 1000));
     
     positions[asset] = {
       amount,
@@ -302,7 +338,7 @@ function getEnrichedPositions() {
       currentValue,
       unrealizedPnL,
       unrealizedPct: costBasis > 0 ? (unrealizedPnL / costBasis) * 100 : 0,
-      holdingDays: holdingDays >= 0 ? holdingDays : 0
+      holdingDays: validHoldingDays
     };
   }
   
@@ -312,6 +348,6 @@ function getEnrichedPositions() {
 module.exports = {
   fetchBalance,
   fetchLedgers,
-  buildCostBasis,
+  calculateTradeAnalytics,
   getEnrichedPositions
 };

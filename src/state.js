@@ -39,7 +39,8 @@ const state = {
   
   // Analytics
   fullTradeHistory: { trades: {}, lastFetchTime: null, totalCount: 0 },
-  costBasis: {},
+  // Position lots calculated from trade history (memory only, not persisted)
+  _positionLots: {},
   tradeAnalytics: {
     lastUpdate: null,
     summary: { totalTrades: 0, realizedPnL: 0, winningTrades: 0, losingTrades: 0 },
@@ -66,7 +67,6 @@ const state = {
 
 const FILES = {
   tradeHistory: path.join(DATA_DIR, 'full_trade_history.json'),
-  costBasis: path.join(DATA_DIR, 'cost_basis.json'),
   analytics: path.join(DATA_DIR, 'trade_analytics.json'),
   llmAnalysis: path.join(DATA_DIR, 'llm_analysis.json'),
   llmHistory: path.join(DATA_DIR, 'llm_history.json'),
@@ -97,7 +97,6 @@ function saveJSON(file, data) {
 
 function loadAllState() {
   state.fullTradeHistory = loadJSON(FILES.tradeHistory, state.fullTradeHistory);
-  state.costBasis = loadJSON(FILES.costBasis, {});
   state.tradeAnalytics = loadJSON(FILES.analytics, state.tradeAnalytics);
   state.llmAnalysis = loadJSON(FILES.llmAnalysis, state.llmAnalysis);
   state.llmHistory = loadJSON(FILES.llmHistory, []);
@@ -132,7 +131,6 @@ function loadAllState() {
 }
 
 function saveTradeHistory() { saveJSON(FILES.tradeHistory, state.fullTradeHistory); }
-function saveCostBasis() { saveJSON(FILES.costBasis, state.costBasis); }
 function saveAnalytics() { saveJSON(FILES.analytics, state.tradeAnalytics); }
 function saveLLMAnalysis() { saveJSON(FILES.llmAnalysis, state.llmAnalysis); }
 function saveLLMHistory() { saveJSON(FILES.llmHistory, state.llmHistory); }
@@ -195,7 +193,6 @@ module.exports = {
   // Persistence
   loadAllState,
   saveTradeHistory,
-  saveCostBasis,
   saveAnalytics,
   saveLLMAnalysis,
   saveLLMHistory,
