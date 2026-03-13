@@ -8,7 +8,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
-const { state, log } = require('./state');
+const { state, log, DATA_DIR, config } = require('./state');
 const kraken = require('./kraken');
 const ai = require('./ai');
 
@@ -77,11 +77,11 @@ function handleAPI(req, res, pathname, url) {
       case '/api/insights':
         return res.end(JSON.stringify(state.insights || []));
       
-      case '/api/questions':
-        return res.end(JSON.stringify(state.questions || []));
-      
       case '/api/ledgers':
         return res.end(JSON.stringify(state.ledgers || []));
+      
+      case '/api/strategy':
+        return res.end(JSON.stringify({ strategy: getStrategy() }));
       
       case '/api/asset-details': {
         const assetParam = url.searchParams.get('asset');
@@ -126,6 +126,9 @@ function handleAPI(req, res, pathname, url) {
             }
             res.writeHead(400);
             return res.end(JSON.stringify({ error: 'Missing orderId' }));
+          
+          case '/api/strategy':
+            return res.end(JSON.stringify(handleStrategyUpdate(data)));
           
           default:
             res.writeHead(404);
@@ -238,6 +241,48 @@ function broadcast(type, data) {
 // ============================================
 // STATE HELPERS
 // ============================================
+
+function getStrategy() {
+  try {
+    const userPath = path.join(DATA_DIR, 'strategy.md');
+    const defaultPath = path.join(DATA_DIR, 'strategy.example.md');
+    
+    if (fs.existsSync(userPath)) {
+      return { content: fs.readFileSync(userPath, 'utf8'), isUser: true };
+    }
+    if (fs.existsSync(defaultPath)) {
+      return { content: fs.readFileSync(defaultPath, 'utf8'), isUser: false };
+    }
+    return { content: '# No strategy file found', isUser: false };
+  } catch (e) {
+    return { content: `# Error reading strategy: ${e.message}`, isUser: false };
+  }
+}
+
+function handleStrategyUpdate(data) {
+  const { password, content } = data;
+  
+  if (!config.editPassword) {
+    return { success: false, error: 'Password protection not configured. Set EDIT_PASSWORD in environment.' };
+  }
+  
+  if (!password || password !== config.editPassword) {
+    return { success: false, error: 'Invalid password' };
+  }
+  
+  if (!content || typeof content !== 'string') {
+    return { success: false, error: 'Invalid strategy content' };
+  }
+  
+  const userPath = path.join(DATA_DIR, 'strategy.md');
+  try {
+    fs.writeFileSync(userPath, content, 'utf8');
+    log('[SERVER] Strategy updated via web interface');
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: `Failed to save: ${e.message}` };
+  }
+}
 
 /**
  * Get detailed trading information for a specific asset
@@ -415,7 +460,6 @@ function getFullState() {
     // AI
     analysis: state.llmAnalysis,
     insights: state.insights || [],
-    questions: state.questions || [],
     
     // News
     news: state.news || { crypto: [], kraken: [], world: [], lastUpdate: null },

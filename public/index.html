@@ -590,6 +590,17 @@
         </div>
       </div>
       
+      <!-- Strategy -->
+      <div class="card" data-card-id="strategy" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Strategy</h2>
+          <button onclick="showStrategyEdit()" class="small" id="editStrategyBtn">Edit</button>
+        </div>
+        <div class="card-content" id="strategyContent" style="max-height: 300px; overflow-y: auto;">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+      
       <!-- Positions -->
       <div class="card" data-card-id="positions" draggable="true">
         <div class="card-header">
@@ -696,16 +707,6 @@
         </div>
       </div>
       
-      <!-- Data Requests -->
-      <div class="card" data-card-id="questions" draggable="true">
-        <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Data Requests</h2>
-        </div>
-        <div class="card-content" id="questionsContent" style="max-height: 200px; overflow-y: auto;">
-          <div style="color: var(--text2); font-size: 0.9rem;">No data requests yet. The AI may request additional data it needs.</div>
-        </div>
-      </div>
-      
       <!-- Deposits/Withdrawals -->
       <div class="card" data-card-id="ledgers" draggable="true">
         <div class="card-header">
@@ -742,6 +743,34 @@
         </div>
         <div class="modal-body" id="modalBody">
           <div class="loading">Loading...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Strategy Edit Modal -->
+    <div class="modal-overlay" id="strategyModal" onclick="closeStrategyModal(event)">
+      <div class="modal" style="max-width: 700px;" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h2 id="strategyModalTitle">Edit Strategy</h2>
+          <button class="modal-close" onclick="closeStrategyModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="strategyModalBody">
+          <div id="strategyPasswordSection">
+            <p style="color: var(--text2); margin-bottom: 16px;">Enter password to edit strategy:</p>
+            <input type="password" id="strategyPassword" placeholder="Password" style="width: 100%; padding: 10px; border: 1px solid var(--bg3); border-radius: 6px; background: var(--bg); color: var(--text); margin-bottom: 12px;">
+            <button onclick="validateStrategyPassword()" id="strategyPasswordBtn">Unlock</button>
+            <div id="strategyPasswordError" style="color: var(--red); margin-top: 8px; display: none;"></div>
+          </div>
+          <div id="strategyEditorSection" style="display: none;">
+            <textarea id="strategyTextarea" style="width: 100%; min-height: 400px; padding: 12px; border: 1px solid var(--bg3); border-radius: 6px; background: var(--bg); color: var(--text); font-family: monospace; font-size: 0.9rem; resize: vertical;"></textarea>
+            <div style="display: flex; justify-content: space-between; margin-top: 12px;">
+              <button onclick="resetToDefaultStrategy()" class="small" style="background: var(--bg3);">Reset to Default</button>
+              <div>
+                <button onclick="closeStrategyModal()" style="background: var(--bg3); margin-right: 8px;">Cancel</button>
+                <button onclick="saveStrategy()" id="saveStrategyBtn">Save</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -851,7 +880,6 @@
       // New cards
       updateMarketContext(data);
       updateNews(data.news);
-      updateQuestions(data.questions);
       updateLedgers(data.ledgers);
       
       // Positions table
@@ -945,7 +973,7 @@
       
       if (news.crypto?.length) {
         html += '<div style="margin-bottom: 12px;"><h3 style="font-size: 0.8rem; color: var(--text2); margin-bottom: 6px; text-transform: uppercase;">Crypto</h3>';
-        html += news.crypto.slice(0, 3).map(item => 
+        html += news.crypto.slice(0, 5).map(item => 
           `<div style="font-size: 0.85rem; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid var(--accent);">
             ${item.title}${item.age ? ' <span style="color: var(--text2); font-size: 0.75rem;">(' + item.age + ')</span>' : ''}
           </div>`
@@ -974,29 +1002,6 @@
       }
       
       el.innerHTML = html;
-    }
-    
-    function updateQuestions(questions) {
-      const el = document.getElementById('questionsContent');
-      if (!el) return;
-      
-      if (!questions || questions.length === 0) {
-        el.innerHTML = '<div style="color: var(--text2); font-size: 0.9rem;">No data requests yet. The AI may request additional data it needs.</div>';
-        return;
-      }
-      
-      el.innerHTML = questions.slice(0, 10).map((q, i) => {
-        const time = q.time ? new Date(q.time).toLocaleString() : '';
-        return `
-          <div style="margin-bottom: 10px; padding: 8px; background: var(--bg); border-radius: 6px; border-left: 3px solid var(--accent);">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-              <span style="color: var(--accent); font-size: 0.7rem; font-weight: 600;">DATA REQUEST</span>
-              <span style="color: var(--text2); font-size: 0.7rem;">${time}</span>
-            </div>
-            <div style="font-size: 0.85rem; line-height: 1.4;">${q.request}</div>
-          </div>
-        `;
-      }).join('');
     }
     
     function updateLedgers(ledgers) {
@@ -1811,9 +1816,146 @@
     fetchLogs();
     fetchHistory();
     fetchBalanceHistory();
+    fetchStrategy();
     setInterval(fetchLogs, 10000);
-    setInterval(fetchBalanceHistory, 60000); // Refresh chart every minute
-    setInterval(updateLastRefreshDisplay, 5000); // Update "x ago" display
+    setInterval(fetchBalanceHistory, 60000);
+    setInterval(updateLastRefreshDisplay, 5000);
+    setInterval(fetchStrategy, 30000);
+    
+    // Strategy management
+    let currentStrategy = '';
+    let defaultStrategy = '';
+    let strategyPassword = '';
+    
+    async function fetchStrategy() {
+      try {
+        const res = await fetch('/api/strategy');
+        const data = await res.json();
+        currentStrategy = data.strategy.content;
+        const el = document.getElementById('strategyContent');
+        const isUser = data.strategy.isUser;
+        el.innerHTML = `
+          <pre style="white-space: pre-wrap; font-size: 0.85rem; line-height: 1.5; color: var(--text); margin: 0;">${escapeHtml(currentStrategy)}</pre>
+          ${!isUser ? '<div style="margin-top: 12px; font-size: 0.8rem; color: var(--text2);">Using default strategy. Edit to create your own.</div>' : ''}
+        `;
+      } catch (e) {
+        document.getElementById('strategyContent').innerHTML = '<div style="color: var(--text2);">Failed to load strategy</div>';
+      }
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    let defaultFetched = false;
+    
+    async function showStrategyEdit() {
+      const modal = document.getElementById('strategyModal');
+      const modalTitle = document.getElementById('strategyModalTitle');
+      const passwordSection = document.getElementById('strategyPasswordSection');
+      const editorSection = document.getElementById('strategyEditorSection');
+      const passwordInput = document.getElementById('strategyPassword');
+      const errorDiv = document.getElementById('strategyPasswordError');
+      
+      modalTitle.textContent = 'Edit Strategy';
+      passwordSection.style.display = 'block';
+      editorSection.style.display = 'none';
+      passwordInput.value = '';
+      errorDiv.style.display = 'none';
+      modal.classList.add('active');
+      document.body.style.overflow = 'hidden';
+      passwordInput.focus();
+    }
+    
+    async function validateStrategyPassword() {
+      const password = document.getElementById('strategyPassword').value;
+      const errorDiv = document.getElementById('strategyPasswordError');
+      
+      if (!password) {
+        errorDiv.textContent = 'Please enter password';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      
+      strategyPassword = password;
+      
+      const passwordSection = document.getElementById('strategyPasswordSection');
+      const editorSection = document.getElementById('strategyEditorSection');
+      const textarea = document.getElementById('strategyTextarea');
+      
+      textarea.value = currentStrategy;
+      passwordSection.style.display = 'none';
+      editorSection.style.display = 'block';
+      textarea.focus();
+      
+      if (!defaultFetched) {
+        try {
+          const res = await fetch('/api/strategy');
+          const data = await res.json();
+          if (!data.strategy.isUser) {
+            defaultStrategy = data.strategy.content;
+          }
+          defaultFetched = true;
+        } catch (e) {}
+      }
+    }
+    
+    function closeStrategyModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+      const modal = document.getElementById('strategyModal');
+      modal.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+    
+    function resetToDefaultStrategy() {
+      if (defaultStrategy && confirm('Reset to default strategy? Your custom strategy will be replaced.')) {
+        document.getElementById('strategyTextarea').value = defaultStrategy;
+      }
+    }
+    
+    async function saveStrategy() {
+      const content = document.getElementById('strategyTextarea').value;
+      const btn = document.getElementById('saveStrategyBtn');
+      const errorDiv = document.getElementById('strategyPasswordError');
+      
+      if (!content.trim()) {
+        alert('Strategy cannot be empty');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      
+      try {
+        const res = await fetch('/api/strategy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: strategyPassword, content })
+        });
+        
+        const result = await res.json();
+        
+        if (result.success) {
+          currentStrategy = content;
+          closeStrategyModal();
+          fetchStrategy();
+        } else {
+          errorDiv.textContent = result.error || 'Failed to save';
+          errorDiv.style.display = 'block';
+          const passwordSection = document.getElementById('strategyPasswordSection');
+          const editorSection = document.getElementById('strategyEditorSection');
+          passwordSection.style.display = 'block';
+          editorSection.style.display = 'none';
+        }
+      } catch (e) {
+        alert('Failed to save: ' + e.message);
+      }
+      
+      btn.disabled = false;
+      btn.textContent = 'Save';
+    }
   </script>
 </body>
 </html>

@@ -1,12 +1,12 @@
 // @ts-check
 /**
  * Analysis Module
- * Runs LLM analysis, manages insights and questions
+ * Runs LLM analysis, manages insights
  */
 
 const fs = require('fs');
 const path = require('path');
-const { state, log, saveLLMAnalysis, saveLLMHistory, saveAIExecutions, saveInsights, saveQuestions, DATA_DIR } = require('../state');
+const { state, log, saveLLMAnalysis, saveLLMHistory, saveAIExecutions, saveInsights, DATA_DIR } = require('../state');
 const kraken = require('../kraken');
 const { callLLM, setConfig, getConfig } = require('./llm');
 const { buildContext } = require('./context');
@@ -121,18 +121,6 @@ async function runAnalysis(force = false) {
     
     saveLLMAnalysis();
     
-    if (parsed.request && parsed.request.length > 5) {
-      state.questions.unshift({
-        request: parsed.request,
-        time: Date.now()
-      });
-      if (state.questions.length > 20) {
-        state.questions = state.questions.slice(0, 20);
-      }
-      saveQuestions();
-      log(`[AI] New question stored: ${parsed.request}`);
-    }
-    
     state.llmHistory.unshift({ ...state.llmAnalysis, id: Date.now() });
     if (state.llmHistory.length > 100) {
       state.llmHistory = state.llmHistory.slice(0, 100);
@@ -204,9 +192,9 @@ function buildPrompt(ctx) {
   const btcDepthStr = ctx.btcDepth ? 
     `Depth: ${(ctx.btcDepth.bidDepth5pct / 1000000).toFixed(2)}M EUR bid / ${(ctx.btcDepth.askDepth5pct / 1000000).toFixed(2)}M EUR ask to 5%` : '';
   
-  const newsWorld = ctx.news.world?.items?.slice(0, 5).map(item => item.title) || [];
+  const newsWorld = ctx.news.world?.items?.slice(0, 3).map(item => item.title) || [];
   const newsCrypto = ctx.news.crypto?.items?.slice(0, 5).map(item => item.title) || [];
-  const newsKraken = ctx.news.kraken?.items?.slice(0, 5).map(item => item.title) || [];
+  const newsKraken = ctx.news.kraken?.items?.slice(0, 3).map(item => item.title) || [];
   
   const topByVolumeFormatted = ctx.topByVolume.slice(0, 20).map(m => ({
     pair: m.pair.replace(/Z?EUR$/, ''),
@@ -400,8 +388,6 @@ RISK: [low/medium/high]
 ANALYSIS: [Plain language reasoning. What's happening and why. Be decisive.]
 DECISION: [Your action and why]
 
-REQUEST: [Optional: data you wish you had. Skip if nothing needed.]
-
 COMMANDS:
 [One command per line, or HOLD]
 
@@ -433,14 +419,12 @@ function parseResponse(response) {
   
   const sentimentMatch = response.match(/SENTIMENT:\s*(bullish|neutral|bearish)/i);
   const riskMatch = response.match(/RISK:\s*(low|medium|high)/i);
-  const analysisMatch = response.match(/ANALYSIS:\s*([\s\S]+?)(?=\n\s*(REQUEST|COMMANDS|DECISION):)/i);
-  const requestMatch = response.match(/REQUEST:\s*(.+?)(?=\n\s*(COMMANDS|DECISION):|\n\n|$)/is);
+  const analysisMatch = response.match(/ANALYSIS:\s*([\s\S]+?)(?=\n\s*(COMMANDS|DECISION):)/i);
   
   return {
     sentiment: sentimentMatch?.[1]?.toLowerCase() || null,
     risk: riskMatch?.[1]?.toLowerCase() || null,
     analysis: analysisMatch?.[1]?.trim() || null,
-    request: requestMatch?.[1]?.trim() || null,
     commands: commands
   };
 }
