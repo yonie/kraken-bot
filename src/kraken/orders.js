@@ -97,6 +97,49 @@ async function limitSell(pair, volume, price) {
   });
 }
 
+async function marketBuy(pair, amountEUR) {
+  const { getClient } = require('./api');
+  const pairInfo = state.pairs[pair];
+  if (!pairInfo) throw new Error(`Unknown pair: ${pair}`);
+  
+  const ticker = state.ticker[pair];
+  if (!ticker?.price) {
+    return { success: false, error: 'no_price_data' };
+  }
+  
+  const price = ticker.price;
+  const lotDecimals = pairInfo.lot_decimals || 8;
+  let volume = amountEUR / price;
+  volume = Number(volume.toFixed(lotDecimals));
+  
+  if (pairInfo.ordermin) {
+    const minVolume = parseFloat(pairInfo.ordermin);
+    if (volume < minVolume) {
+      log(`[ORDER] Market BUY below minimum: ${volume} < ${minVolume}, adjusting`);
+      volume = minVolume;
+    }
+  }
+  
+  log(`[ORDER] Market BUY: ${volume} ${pair} (~${amountEUR} EUR at ${price})`);
+  
+  return new Promise((resolve) => {
+    getClient().api('AddOrder', {
+      pair,
+      type: 'buy',
+      ordertype: 'market',
+      volume
+    }, (error, data) => {
+      if (error) {
+        log(`[ORDER] Market buy failed: ${error.message}`);
+        resolve({ success: false, error: error.message });
+      } else {
+        log(`[ORDER] Market buy success: ${data.result?.descr?.order}`);
+        resolve({ success: true, order: data.result });
+      }
+    });
+  });
+}
+
 async function cancelOrder(orderId) {
   const { getClient } = require('./api');
   
@@ -115,5 +158,6 @@ module.exports = {
   fetchOrders,
   limitBuy,
   limitSell,
+  marketBuy,
   cancelOrder
 };

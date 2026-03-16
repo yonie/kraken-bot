@@ -197,7 +197,7 @@ function buildPrompt(ctx) {
   const newsKraken = ctx.news.kraken?.items?.slice(0, 3).map(item => item.title) || [];
   
   const topByVolumeFormatted = ctx.topByVolume.slice(0, 20).map(m => ({
-    pair: m.pair.replace(/Z?EUR$/, ''),
+    pair: kraken.getAssetFromPair(m.pair),
     price: m.price,
     low_24h: m.low24,
     high_24h: m.high24,
@@ -207,7 +207,7 @@ function buildPrompt(ctx) {
   }));
   
   const moversFormatted = ctx.movers.slice(0, 10).map(m => ({
-    pair: m.pair.replace(/Z?EUR$/, ''),
+    pair: kraken.getAssetFromPair(m.pair),
     price: m.price,
     change_7d_pct: m.change7dPct,
     change_24h_pct: m.change24hPct,
@@ -227,7 +227,7 @@ function buildPrompt(ctx) {
   const depositsFormatted = (ctx.recentLedgers || []).map(l => ({
     time: l.timestamp,
     type: l.type,
-    asset: l.asset.replace('Z', ''),
+    asset: l.asset,
     amount: l.amount,
     fee: l.fee
   }));
@@ -392,14 +392,13 @@ COMMANDS:
 [One command per line, or HOLD]
 
 === COMMAND SYNTAX ===
-SELL <ASSET> <PRICE> - sell entire position
-SELL <ASSET> 50% <PRICE> - sell partial (e.g., 25%, 50%)
-BUY <ASSET> <EUR> <PRICE> - buy EUR worth
-CANCEL BUY <ASSET> - cancel all buy orders for this asset
-HOLD <ASSET> - no action for this asset
+BUY <ASSET> <EUR> - market buy EUR worth (executes immediately)
+SELL <ASSET> <PRICE> - limit sell entire position at target price
 HOLD - no action this round
 
-Note: BUY/SELL cancels existing orders for that asset first.
+Notes:
+- BUY executes as market order (immediate fill)
+- SELL cancels any existing orders for that asset before placing new limit order
 `;
 }
 

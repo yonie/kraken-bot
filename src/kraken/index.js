@@ -36,6 +36,7 @@ module.exports = {
   fetchPairs: pairs.fetchPairs,
   findPairForAsset: pairs.findPairForAsset,
   getAssetFromPair: pairs.getAssetFromPair,
+  toInternalPair: pairs.toInternalPair,
   
   // Market data
   fetchTicker: market.fetchTicker,
@@ -59,6 +60,7 @@ module.exports = {
   fetchOrders: orders.fetchOrders,
   limitBuy: orders.limitBuy,
   limitSell: orders.limitSell,
+  marketBuy: orders.marketBuy,
   cancelOrder: orders.cancelOrder,
   
   // Refresh all

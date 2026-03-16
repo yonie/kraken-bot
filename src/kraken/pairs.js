@@ -1,50 +1,51 @@
 // @ts-check
 /**
- * Asset Pair Utilities
+ * Kraken Pair Naming Convention
+ * 
+ * Kraken uses TWO names for each trading pair:
+ * - Internal key (e.g., XETHZEUR): Used in API responses (Ticker, Depth, AssetPairs)
+ * - Altname (e.g., ETHEUR): Used in order responses (OpenOrders)
+ * 
+ * We use INTERNAL KEYS throughout the codebase for consistency.
+ * state.pairAliases maps altname -> internal key for conversion.
+ * 
+ * Examples:
+ *   Internal: XETHZEUR, XXRPZEUR, XXBTZEUR
+ *   Altname:  ETHEUR,  XRPEUR,  XBTEUR
+ *   (some pairs like SUIEUR have no X prefix - same for both)
  */
 
 const { state } = require('../state');
 const { getClient, getCountryCode } = require('./api');
 
-function findPairForAsset(assetName) {
-  if (!state.pairs || !assetName) return null;
-  let normalized = assetName.toUpperCase().trim();
-  
-  // Handle staked/staking variants: DOT.S, DOT.P -> DOT
-  if (normalized.includes('.')) {
-    normalized = normalized.split('.')[0];
-  }
-  
-  if (state.assetToPairMap[normalized]) {
-    return state.assetToPairMap[normalized];
-  }
-  
-  const variations = [
-    normalized + 'EUR',
-    normalized + 'ZEUR', 
-    'X' + normalized + 'ZEUR',
-    'XX' + normalized.slice(1) + 'ZEUR'
-  ];
-  
-  for (const v of variations) {
-    if (state.pairs[v]) return v;
-  }
-  
-  for (const pair in state.pairs) {
-    const base = state.pairs[pair].base;
-    if (base === normalized || base === 'X' + normalized || base === 'XX' + normalized.slice(1)) {
-      if (pair.endsWith('EUR') || pair.endsWith('ZEUR')) {
-        return pair;
-      }
-    }
-  }
-  
-  return null;
+/**
+ * Convert altname to internal key.
+ * Orders use altname (ETHEUR), we need internal key (XETHZEUR).
+ */
+function toInternalPair(pairName) {
+  if (!pairName) return null;
+  if (state.pairAliases?.[pairName]) return state.pairAliases[pairName];
+  if (state.pairs?.[pairName]) return pairName;
+  return pairName;
 }
 
+/**
+ * Find pair for asset using assetToPairMap (populated from Kraken API).
+ */
+function findPairForAsset(assetName) {
+  if (!state.assetToPairMap) return null;
+  const normalized = assetName.toUpperCase().trim();
+  return state.assetToPairMap[normalized] || null;
+}
+
+/**
+ * Get asset name from pair - returns Kraken's .base field as-is.
+ */
 function getAssetFromPair(pair) {
-  if (state.pairs?.[pair]?.base) return state.pairs[pair].base;
-  return pair.replace(/Z?EUR$/, '').replace(/\.S$/, '');
+  const internalPair = toInternalPair(pair);
+  const info = state.pairs?.[internalPair];
+  
+  return info?.base || pair;
 }
 
 async function fetchPairs() {
@@ -56,23 +57,23 @@ async function fetchPairs() {
       
       const { state, log } = require('../state');
       state.pairs = {};
+      state.pairAliases = {};
       state.assetToPairMap = {};
       
       for (const pair in data.result) {
         const info = data.result[pair];
         if ((pair.endsWith('EUR') || pair.endsWith('ZEUR')) && !pair.includes('.')) {
+          // Store by internal key ONLY
           state.pairs[pair] = info;
           
+          // Map altname -> internal key (for order conversion)
+          if (info.altname && info.altname !== pair) {
+            state.pairAliases[info.altname] = pair;
+          }
+          
+          // Map asset to internal key (use Kraken's base name exactly)
           const base = info.base;
           state.assetToPairMap[base] = pair;
-          
-          if (base.startsWith('X') && base.length <= 5) {
-            state.assetToPairMap[base.slice(1)] = pair;
-          }
-          if (base.startsWith('XX') && base.length <= 6) {
-            state.assetToPairMap[base.slice(1)] = pair;
-            state.assetToPairMap[base.slice(2)] = pair;
-          }
         }
       }
       
@@ -83,6 +84,7 @@ async function fetchPairs() {
 }
 
 module.exports = {
+  toInternalPair,
   findPairForAsset,
   getAssetFromPair,
   fetchPairs

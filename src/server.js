@@ -288,11 +288,7 @@ function handleStrategyUpdate(data) {
  * Get detailed trading information for a specific asset
  */
 function getAssetDetails(assetName) {
-  // Normalize asset name - remove common prefixes/suffixes
-  const normalizedAsset = assetName.toUpperCase()
-    .replace(/^[XZ]+/, '')  // Remove X/Z prefixes
-    .replace(/\.S$/, '')    // Remove staking suffix
-    .trim();
+  const normalizedAsset = assetName.toUpperCase().trim();
   
   // Find matching pair
   const pair = kraken.findPairForAsset(normalizedAsset);
@@ -304,10 +300,9 @@ function getAssetDetails(assetName) {
   const positions = kraken.getEnrichedPositions();
   let position = null;
   
-  // Try to find position with various asset name formats
+  // Try to find position
   for (const key of Object.keys(positions)) {
-    const cleanKey = key.replace(/^[XZ]+/, '').replace(/\.S$/, '');
-    if (cleanKey === normalizedAsset || key === assetName) {
+    if (key === normalizedAsset) {
       position = { asset: key, ...positions[key] };
       break;
     }
@@ -316,8 +311,7 @@ function getAssetDetails(assetName) {
   // Get cost basis info from trade analytics
   const assetActivity = (state.tradeAnalytics.recentActivity || [])
     .filter(t => {
-      const cleanAsset = t.asset.replace(/^[XZ]+/, '').replace(/\.S$/, '');
-      return cleanAsset === normalizedAsset || t.asset === assetName;
+      return t.asset === normalizedAsset || t.asset === assetName;
     });
   
   const costBasisInfo = position ? {
@@ -335,11 +329,10 @@ function getAssetDetails(assetName) {
   const assetTrades = Object.entries(state.fullTradeHistory.trades)
     .filter(([id, trade]) => {
       const tradePair = trade.pair;
-      const tradeAsset = tradePair.replace(/Z?EUR$/, '').replace(/^X+/, '');
+      const tradeAsset = kraken.getAssetFromPair(tradePair);
       const tradeTime = trade.time > 1e12 ? trade.time / 1000 : trade.time;
       return (tradeAsset === normalizedAsset || 
-             tradePair === pair ||
-             tradePair.includes(normalizedAsset)) &&
+             tradePair === pair) &&
              tradeTime >= sevenDaysAgo;
     })
     .map(([id, trade]) => ({
@@ -354,11 +347,13 @@ function getAssetDetails(assetName) {
     .sort((a, b) => b.time - a.time);
   
   // Get open orders for this asset
+  // Orders use altname, convert to internal for comparison
+  const internalPair = kraken.toInternalPair(pair);
   const openOrders = Object.entries(state.orders)
     .filter(([id, order]) => {
       const orderPair = order.descr?.pair || '';
-      return orderPair.includes(normalizedAsset) || 
-             orderPair === pair?.replace('ZEUR', 'EUR');
+      const internalOrderPair = kraken.toInternalPair(orderPair);
+      return internalOrderPair === internalPair;
     })
     .map(([id, order]) => ({
       id,
@@ -371,8 +366,7 @@ function getAssetDetails(assetName) {
   // Get recent closed trades P&L for this asset
   const closedPnL = (state.tradeAnalytics.recentActivity || [])
     .filter(t => {
-      const cleanAsset = t.asset.replace(/^[XZ]+/, '').replace(/\.S$/, '');
-      return cleanAsset === normalizedAsset || t.asset === assetName;
+      return t.asset === normalizedAsset || t.asset === assetName;
     })
     .slice(0, 20);
   

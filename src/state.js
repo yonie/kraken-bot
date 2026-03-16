@@ -20,8 +20,9 @@ if (!fs.existsSync(DATA_DIR)) {
 
 const state = {
   // Kraken data
-  pairs: {},              // Trading pairs info
-  assetToPairMap: {},     // Asset -> pair mapping (e.g., "ETH" -> "XETHZEUR")
+  pairs: {},              // Trading pairs info (keyed by internal name, e.g., XETHZEUR)
+  pairAliases: {},        // Altname -> internal key mapping (e.g., ETHEUR -> XETHZEUR)
+  assetToPairMap: {},     // Asset -> pair mapping (e.g., ETH -> XETHZEUR)
   ticker: {},             // Current prices
   wallet: {},             // Balances
   orders: {},             // Open orders

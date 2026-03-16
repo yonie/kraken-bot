@@ -290,6 +290,14 @@ function getEnrichedPositions() {
       }
     }
     
+    // If lot amount is less than wallet amount, trade history is stale
+    // The missing portion (likely a recent fill) should use current price as cost estimate
+    if (totalLotAmount > 0 && totalLotAmount < amount) {
+      const missingAmount = amount - totalLotAmount;
+      totalCost += missingAmount * currentPrice;
+      totalLotAmount = amount;
+    }
+    
     const avgCost = totalLotAmount > 0 ? totalCost / totalLotAmount : currentPrice;
     const costBasis = totalLotAmount > 0 ? totalCost : currentValue;
     

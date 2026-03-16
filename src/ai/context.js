@@ -66,7 +66,7 @@ function computeAssetPerformance() {
     if (trade.time < thirtyDaysAgo) continue;
     
     const pair = trade.pair || '';
-    const asset = pair.replace(/Z?EUR$/, '').replace(/^X+/, '');
+    const asset = kraken.getAssetFromPair(pair);
     if (!asset || asset === 'EUR') continue;
     
     if (!assetStats[asset]) {
@@ -141,7 +141,7 @@ async function buildContext() {
   
   const positionPairs = new Set();
   for (const asset in enriched) {
-    const pair = kraken.findPairForAsset(asset);
+      const pair = state.assetToPairMap[asset] || null;
     if (pair) positionPairs.add(pair);
   }
   
@@ -182,16 +182,18 @@ async function buildContext() {
     .slice(0, 20);
   
   const positionPairsArray = [...positionPairs].filter(p => {
-    const asset = p.replace(/Z?EUR$/, '').replace(/^X+/, '');
+    const asset = kraken.getAssetFromPair(p);
     return enriched[asset] || enriched['X' + asset] || enriched['XX' + asset];
   });
   
   // Always fetch depth for BTC, ETH, and top movers by volume
-  const depthPairs = new Set(['XXBTZEUR', 'XETHZEUR']);
+  const btcPair = 'XXBTZEUR';
+  const ethPair = 'XETHZEUR';
+  const depthPairs = new Set([btcPair, ethPair]);
   
   // Add depth for held positions
   Object.keys(enriched).forEach(a => {
-    const pair = kraken.findPairForAsset(a);
+      const pair = state.assetToPairMap[a] || null;
     if (pair) depthPairs.add(pair);
   });
   
@@ -222,14 +224,14 @@ async function buildContext() {
   for (const asset in enriched) {
     const p = enriched[asset];
     if (p.currentValue >= minValue) {
-      const pair = kraken.findPairForAsset(asset);
+    const pair = state.assetToPairMap[asset] || null;
       const ticker = pair ? state.ticker[pair] : null;
       const ohlc = ohlcData[pair] || [];
       const depth = depthData[pair] || null;
-      const perf = assetPerformance[cleanAssetName(asset)] || null;
+      const perf = assetPerformance[asset] || null;
       
       positions.push({
-        asset: cleanAssetName(asset),
+        asset: asset,
         amount: p.amount,
         value: p.currentValue.toFixed(2),
         pnl: p.unrealizedPnL.toFixed(2),
@@ -291,7 +293,8 @@ async function buildContext() {
     .filter(t => t.time >= sevenDaysAgo)
     .map(t => ({
       type: t.type,
-      pair: t.pair.replace('EUR', ''),
+      pair: t.pair,
+      asset: kraken.getAssetFromPair(t.pair),
       cost: parseFloat(t.cost).toFixed(2),
       price: parseFloat(t.price).toFixed(t.price < 1 ? 6 : 2),
       volume: parseFloat(t.vol).toFixed(6),
@@ -302,7 +305,7 @@ async function buildContext() {
     id,
     type: o.descr?.type,
     pair: o.descr?.pair,
-    asset: cleanAssetName(o.descr?.pair?.replace(/Z?EUR$/, '')) || 'UNKNOWN',
+    asset: kraken.getAssetFromPair(o.descr?.pair) || 'UNKNOWN',
     price: o.descr?.price,
     volume: parseFloat(o.vol).toFixed(6),
     orderType: o.descr?.ordertype,
