@@ -458,6 +458,9 @@ function getFullState() {
     // News
     news: state.news || { crypto: [], kraken: [], world: [], lastUpdate: null },
     
+    // Balance history for chart
+    balanceHistory: state.balanceHistory || [],
+    
     // Meta
     uptime: Math.floor((Date.now() - state.serverStartTime) / 1000),
     pairsCount: Object.keys(state.pairs).length
