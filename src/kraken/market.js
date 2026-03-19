@@ -19,6 +19,9 @@ async function fetchTicker() {
     getClient().api('Ticker', { pair: pairList }, (error, data) => {
       if (error) {
         console.error('[KRAKEN] Ticker error:', error.message);
+        if (error.message && error.message.includes('Unknown asset pair')) {
+          identifyAndRemoveInvalidPairs();
+        }
         return resolve(null);
       }
       
@@ -72,6 +75,114 @@ async function fetchTicker() {
       resolve(state.ticker);
     });
   });
+}
+
+async function identifyAndRemoveInvalidPairs() {
+  const { log } = require('../state');
+  const { waitForRateLimit } = require('./api');
+  
+  if (!state.pairs || Object.keys(state.pairs).length === 0) {
+    log('[KRAKEN] No pairs to validate, will reinitialize pairs...');
+    return;
+  }
+
+  log('[KRAKEN] Starting pair validation to identify stale pairs...');
+  
+  const pairKeys = Object.keys(state.pairs);
+  const batchSize = 20;
+  let currentBatch = 0;
+  let removedPairs = [];
+  
+  async function testBatch() {
+    const startIndex = currentBatch * batchSize;
+    const endIndex = Math.min(startIndex + batchSize, pairKeys.length);
+    const batchPairs = pairKeys.slice(startIndex, endIndex);
+    
+    if (batchPairs.length === 0) {
+      if (removedPairs.length > 0) {
+        log(`[KRAKEN] Removed ${removedPairs.length} invalid pairs: ${removedPairs.join(', ')}`);
+        log(`[KRAKEN] Now trading on ${Object.keys(state.pairs).length} pairs`);
+      } else {
+        log(`[KRAKEN] Pair validation complete. All ${Object.keys(state.pairs).length} pairs valid.`);
+      }
+      return;
+    }
+    
+    const batchString = batchPairs.join(',');
+    
+    await waitForRateLimit(1);
+    
+    return new Promise((resolve) => {
+      const { getClient } = require('./api');
+      getClient().api('Ticker', { pair: batchString }, (error, tickerdata) => {
+        if (error && error.message && error.message.includes('API:Rate limit exceeded')) {
+          log('[KRAKEN] Rate limit hit during validation, waiting 60s...');
+          setTimeout(() => testBatch().then(resolve), 60000);
+          return;
+        }
+        
+        if (error && error.message && error.message.includes('Unknown asset pair')) {
+          log(`[KRAKEN] Batch ${currentBatch + 1} contains invalid pairs, testing individually...`);
+          testPairsIndividually(batchPairs, () => {
+            currentBatch++;
+            setTimeout(() => testBatch().then(resolve), 5000);
+          });
+        } else if (error) {
+          console.error('[KRAKEN] Error testing batch:', error.message);
+          currentBatch++;
+          setTimeout(() => testBatch().then(resolve), 5000);
+        } else {
+          currentBatch++;
+          setTimeout(() => testBatch().then(resolve), 3000);
+        }
+      });
+    });
+  }
+  
+  function testPairsIndividually(pairsToTest, callback) {
+    let index = 0;
+    const { log } = require('../state');
+    
+    async function testNextPair() {
+      if (index >= pairsToTest.length) {
+        callback();
+        return;
+      }
+      
+      const pair = pairsToTest[index];
+      
+      await waitForRateLimit(1);
+      
+      return new Promise((resolve) => {
+        const { getClient } = require('./api');
+        getClient().api('Ticker', { pair: pair }, (error, tickerdata) => {
+          if (error && error.message && error.message.includes('API:Rate limit exceeded')) {
+            log('[KRAKEN] Rate limit during individual test, waiting 30s...');
+            setTimeout(() => testNextPair().then(resolve), 30000);
+            return;
+          }
+          
+          if (error && error.message && error.message.includes('Unknown asset pair')) {
+            const asset = state.pairs[pair]?.base || 'unknown';
+            log(`[KRAKEN] Removing invalid pair: ${pair} (asset: ${asset})`);
+            delete state.pairs[pair];
+            delete state.assetToPairMap[asset];
+            removedPairs.push(pair);
+          } else if (error) {
+            console.error(`[KRAKEN] Error testing pair ${pair}:`, error.message);
+          }
+          
+          index++;
+          setTimeout(() => testNextPair().then(resolve), 1000);
+        });
+      });
+    }
+    
+    testNextPair().then(resolve);
+  }
+  
+  log('[KRAKEN] Starting conservative pair validation to avoid rate limits...');
+  setTimeout(() => testBatch(), 2000);
 }
 
 async function fetchGreedIndex() {
@@ -255,5 +366,6 @@ module.exports = {
   fetchOHLC,
   fetchOHLCForPairs,
   fetchDepth,
-  fetchDepthForPairs
+  fetchDepthForPairs,
+  identifyAndRemoveInvalidPairs
 };
