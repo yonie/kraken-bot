@@ -1662,12 +1662,14 @@
         return;
       }
       
+      const displayName = data.displayName;
+      
       // Update title with price if available
       if (data.ticker) {
         const priceStr = data.ticker.price < 1 ? data.ticker.price.toFixed(6) : data.ticker.price.toFixed(2);
-        modalTitle.innerHTML = `<span>${data.asset}</span><span style="font-weight: normal; color: var(--text2); font-size: 1rem;">${priceStr} EUR</span>`;
+        modalTitle.innerHTML = `<span>${displayName}</span><span style="font-weight: normal; color: var(--text2); font-size: 1rem;">${priceStr} EUR</span>`;
       } else {
-        modalTitle.innerHTML = `<span>${data.asset}</span>`;
+        modalTitle.innerHTML = `<span>${displayName}</span>`;
       }
       
       let html = '';

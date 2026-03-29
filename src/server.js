@@ -384,6 +384,7 @@ function getAssetDetails(assetName) {
   
   return {
     asset: normalizedAsset,
+    displayName: kraken.getAssetDisplayName(normalizedAsset),
     pair,
     
     // Current market data
