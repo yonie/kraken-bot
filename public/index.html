@@ -1015,7 +1015,7 @@
       
       tbody.innerHTML = ledgers.slice(0, 10).map(l => {
         const isDeposit = l.type === 'deposit';
-        const displayName = l.displayName || (l.asset || '').replace('Z', '');
+        const displayName = l.displayName;
         const amount = l.amount ? l.amount.toFixed(displayName === 'EUR' ? 2 : 6) : '--';
         const d = l.time ? new Date(l.time * 1000) : new Date();
         const diffMs = Date.now() - d.getTime();
@@ -1043,7 +1043,7 @@
         .sort((a, b) => b[1].currentValue - a[1].currentValue)
         .map(([asset, p]) => `
           <tr>
-            <td><span class="asset-link" onclick="showAssetDetails('${asset}', '${p.displayName || asset}')">${p.displayName || asset}</span></td>
+            <td><span class="asset-link" onclick="showAssetDetails('${asset}', '${p.displayName}')">${p.displayName}</span></td>
             <td>${p.currentValue.toFixed(2)} EUR</td>
             <td class="${p.unrealizedPnL >= 0 ? 'positive' : 'negative'}">
               ${p.unrealizedPnL >= 0 ? '+' : ''}${p.unrealizedPnL.toFixed(2)} (${p.unrealizedPct.toFixed(1)}%)
@@ -1143,7 +1143,7 @@
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
         const timeAgo = diffDays > 0 ? `${diffDays}d ago` : diffHours > 0 ? `${diffHours}h ago` : 'Just now';
-        const displayName = t.displayName || t.asset;
+        const displayName = t.displayName;
         
         return `
           <tr>
@@ -1627,7 +1627,7 @@
       const modalTitle = document.getElementById('modalTitle');
       const modalBody = document.getElementById('modalBody');
       
-      modalTitle.innerHTML = `<span>${displayName || asset}</span>`;
+      modalTitle.innerHTML = `<span>${displayName}</span>`;
       modalBody.innerHTML = '<div class="loading">Loading asset details...</div>';
       modal.classList.add('active');
       document.body.style.overflow = 'hidden';
