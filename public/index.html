@@ -1063,7 +1063,6 @@
       }
       
       tbody.innerHTML = orderList.map(([id, o]) => {
-        const pair = o.descr?.pair || '';
         const cost = parseFloat(o.descr?.price) * parseFloat(o.vol);
         const d = new Date(o.opentm * 1000);
         const diffMs = Date.now() - d.getTime();
@@ -1074,7 +1073,7 @@
         return `
           <tr>
             <td class="${o.descr?.type === 'buy' ? 'positive' : 'negative'}">${o.descr?.type?.toUpperCase()}</td>
-            <td><span class="asset-link" onclick="showAssetDetails('${pair}', '${o.displayName || pair}')">${o.displayName || pair}</span></td>
+            <td><span class="asset-link" onclick="showAssetDetails('${o.asset}', '${o.displayName}')">${o.displayName}</span></td>
             <td>${cost.toFixed(2)}</td>
             <td>${timeAgo}</td>
           </tr>
@@ -1099,7 +1098,7 @@
         return `
           <tr>
             <td class="${t.type === 'buy' ? 'positive' : 'negative'}">${t.type.toUpperCase()}</td>
-            <td><span class="asset-link" onclick="showAssetDetails('${t.pair}', '${t.displayName || t.pair}')">${t.displayName || t.pair}</span></td>
+            <td><span class="asset-link" onclick="showAssetDetails('${t.asset}', '${t.displayName}')">${t.displayName}</span></td>
             <td>${parseFloat(t.cost).toFixed(2)}</td>
             <td>${timeAgo}</td>
           </tr>
@@ -1116,10 +1115,9 @@
         .sort((a, b) => b.change24hPct - a.change24hPct);
       
       tbody.innerHTML = movers.map(m => {
-        const displayName = m.displayName || m.pair;
         return `
           <tr>
-            <td><span class="asset-link" onclick="showAssetDetails('${m.pair}', '${displayName}')">${displayName}</span></td>
+            <td><span class="asset-link" onclick="showAssetDetails('${m.asset}', '${m.displayName}')">${m.displayName}</span></td>
             <td>${m.price < 1 ? m.price.toFixed(6) : m.price.toFixed(2)}</td>
             <td>${m.change24hPct >= 0 ? '+' : ''}${m.change24hPct}%</td>
             <td class="${m.distFromLow < 30 ? 'positive' : m.distFromLow > 70 ? 'negative' : ''}">${m.distFromLow}%</td>

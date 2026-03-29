@@ -434,18 +434,22 @@ function getFullState() {
   const ordersWithDisplayNames = {};
   for (const [id, order] of Object.entries(state.orders || {})) {
     const pair = order.descr?.pair || '';
-    const baseAsset = kraken.getAssetFromPair(pair);
+    const internalPair = kraken.toInternalPair(pair);
+    const baseAsset = internalPair ? kraken.getAssetFromPair(internalPair) : pair;
     ordersWithDisplayNames[id] = {
       ...order,
+      asset: baseAsset,
       displayName: kraken.getAssetDisplayName(baseAsset)
     };
   }
   
   // Transform trades to include displayName
   const tradesWithDisplayNames = (state.trades || []).slice(0, 50).map(t => {
-    const baseAsset = kraken.getAssetFromPair(t.pair);
+    const internalPair = kraken.toInternalPair(t.pair);
+    const baseAsset = internalPair ? kraken.getAssetFromPair(internalPair) : t.pair;
     return {
       ...t,
+      asset: baseAsset,
       displayName: kraken.getAssetDisplayName(baseAsset)
     };
   });
@@ -456,6 +460,7 @@ function getFullState() {
     const baseAsset = kraken.getAssetFromPair(pair);
     tickerWithDisplayNames[pair] = {
       ...data,
+      asset: baseAsset,
       displayName: kraken.getAssetDisplayName(baseAsset)
     };
   }
