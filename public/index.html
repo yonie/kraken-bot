@@ -1015,8 +1015,8 @@
       
       tbody.innerHTML = ledgers.slice(0, 10).map(l => {
         const isDeposit = l.type === 'deposit';
-        const asset = (l.asset || '').replace('Z', '');
-        const amount = l.amount ? l.amount.toFixed(asset === 'EUR' ? 2 : 6) : '--';
+        const displayName = l.displayName || (l.asset || '').replace('Z', '');
+        const amount = l.amount ? l.amount.toFixed(displayName === 'EUR' ? 2 : 6) : '--';
         const d = l.time ? new Date(l.time * 1000) : new Date();
         const diffMs = Date.now() - d.getTime();
         const diffHours = Math.floor(diffMs / 3600000);
@@ -1025,7 +1025,7 @@
         return `
           <tr>
             <td class="${isDeposit ? 'positive' : 'negative'}">${isDeposit ? 'DEPOSIT' : 'WITHDRAW'}</td>
-            <td>${amount} ${asset}</td>
+            <td>${amount} ${displayName}</td>
             <td>${timeAgo}</td>
           </tr>
         `;
@@ -1043,7 +1043,7 @@
         .sort((a, b) => b[1].currentValue - a[1].currentValue)
         .map(([asset, p]) => `
           <tr>
-            <td><span class="asset-link" onclick="showAssetDetails('${asset}')">${asset.replace(/^[XZ]/, '')}</span></td>
+            <td><span class="asset-link" onclick="showAssetDetails('${asset}', '${p.displayName || asset}')">${p.displayName || asset}</span></td>
             <td>${p.currentValue.toFixed(2)} EUR</td>
             <td class="${p.unrealizedPnL >= 0 ? 'positive' : 'negative'}">
               ${p.unrealizedPnL >= 0 ? '+' : ''}${p.unrealizedPnL.toFixed(2)} (${p.unrealizedPct.toFixed(1)}%)
@@ -1064,7 +1064,6 @@
       
       tbody.innerHTML = orderList.map(([id, o]) => {
         const pair = o.descr?.pair || '';
-        const asset = pair.replace(/EUR$/, '').replace(/^X+/, '');
         const cost = parseFloat(o.descr?.price) * parseFloat(o.vol);
         const d = new Date(o.opentm * 1000);
         const diffMs = Date.now() - d.getTime();
@@ -1075,7 +1074,7 @@
         return `
           <tr>
             <td class="${o.descr?.type === 'buy' ? 'positive' : 'negative'}">${o.descr?.type?.toUpperCase()}</td>
-            <td><span class="asset-link" onclick="showAssetDetails('${asset}')">${pair}</span></td>
+            <td><span class="asset-link" onclick="showAssetDetails('${pair}', '${o.displayName || pair}')">${o.displayName || pair}</span></td>
             <td>${cost.toFixed(2)}</td>
             <td>${timeAgo}</td>
           </tr>
@@ -1091,7 +1090,6 @@
       }
       
       tbody.innerHTML = trades.map(t => {
-        const asset = t.pair.replace(/Z?EUR$/, '').replace(/^X+/, '');
         const d = new Date(t.time * 1000);
         const diffMs = Date.now() - d.getTime();
         const diffMins = Math.floor(diffMs / 60000);
@@ -1101,7 +1099,7 @@
         return `
           <tr>
             <td class="${t.type === 'buy' ? 'positive' : 'negative'}">${t.type.toUpperCase()}</td>
-            <td><span class="asset-link" onclick="showAssetDetails('${asset}')">${t.pair.replace('EUR', '')}</span></td>
+            <td><span class="asset-link" onclick="showAssetDetails('${t.pair}', '${t.displayName || t.pair}')">${t.displayName || t.pair}</span></td>
             <td>${parseFloat(t.cost).toFixed(2)}</td>
             <td>${timeAgo}</td>
           </tr>
@@ -1118,10 +1116,10 @@
         .sort((a, b) => b.change24hPct - a.change24hPct);
       
       tbody.innerHTML = movers.map(m => {
-        const asset = m.pair.replace(/Z?EUR$/, '').replace(/^X+/, '');
+        const displayName = m.displayName || m.pair;
         return `
           <tr>
-            <td><span class="asset-link" onclick="showAssetDetails('${asset}')">${m.pair.replace('EUR', '').replace(/^X+/, '')}</span></td>
+            <td><span class="asset-link" onclick="showAssetDetails('${m.pair}', '${displayName}')">${displayName}</span></td>
             <td>${m.price < 1 ? m.price.toFixed(6) : m.price.toFixed(2)}</td>
             <td>${m.change24hPct >= 0 ? '+' : ''}${m.change24hPct}%</td>
             <td class="${m.distFromLow < 30 ? 'positive' : m.distFromLow > 70 ? 'negative' : ''}">${m.distFromLow}%</td>
@@ -1147,11 +1145,11 @@
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
         const timeAgo = diffDays > 0 ? `${diffDays}d ago` : diffHours > 0 ? `${diffHours}h ago` : 'Just now';
-        const cleanAsset = t.asset.replace(/^[XZ]/, '');
+        const displayName = t.displayName || t.asset;
         
         return `
           <tr>
-            <td><span class="asset-link" onclick="showAssetDetails('${t.asset}')">${cleanAsset}</span></td>
+            <td><span class="asset-link" onclick="showAssetDetails('${t.asset}', '${displayName}')">${displayName}</span></td>
             <td class="${pnlClass}">${pnlSign}${t.pnl.toFixed(2)}</td>
             <td class="${pnlClass}">${pctSign}${t.pnlPercent.toFixed(1)}%</td>
             <td title="${closedTime.toLocaleString()}">${timeAgo}</td>
@@ -1626,14 +1624,12 @@
     // ASSET DETAILS MODAL
     // ============================================
     
-    async function showAssetDetails(asset) {
+    async function showAssetDetails(asset, displayName) {
       const modal = document.getElementById('assetModal');
       const modalTitle = document.getElementById('modalTitle');
       const modalBody = document.getElementById('modalBody');
       
-      // Clean up asset name for display
-      const cleanAsset = asset.replace(/^[XZ]+/, '').replace(/\.S$/, '');
-      modalTitle.innerHTML = `<span>${cleanAsset}</span>`;
+      modalTitle.innerHTML = `<span>${displayName || asset}</span>`;
       modalBody.innerHTML = '<div class="loading">Loading asset details...</div>';
       modal.classList.add('active');
       document.body.style.overflow = 'hidden';

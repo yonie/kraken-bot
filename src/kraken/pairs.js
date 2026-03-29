@@ -19,6 +19,60 @@ const { state } = require('../state');
 const { getClient, getCountryCode } = require('./api');
 
 /**
+ * Display Name Mapping
+ * Maps internal asset names (XXBT) to Kraken altnames (XBT)
+ * Fetched from Kraken Assets API and cached.
+ */
+state.assetDisplayNames = {};  // internal -> display (e.g., XXBT -> XBT)
+state.internalFromDisplay = {}; // display -> internal (e.g., XBT -> XXBT)
+
+/**
+ * Fetch asset display name mapping from Kraken Assets API.
+ * This gives us the altname field which is the human-readable name.
+ */
+async function fetchAssetDisplayNames() {
+  return new Promise((resolve, reject) => {
+    getClient().api('Assets', null, (error, data) => {
+      if (error) {
+        console.error('[KRAKEN] Assets API error:', error.message);
+        return resolve(null);
+      }
+      
+      state.assetDisplayNames = {};
+      state.internalFromDisplay = {};
+      
+      for (const [asset, info] of Object.entries(data.result)) {
+        if (info.altname && info.altname !== asset) {
+          state.assetDisplayNames[asset] = info.altname;
+          state.internalFromDisplay[info.altname] = asset;
+        }
+      }
+      
+      console.log(`[KRAKEN] Loaded ${Object.keys(state.assetDisplayNames).length} asset display name mappings`);
+      resolve(state.assetDisplayNames);
+    });
+  });
+}
+
+/**
+ * Get display name for an internal asset name.
+ * e.g., getAssetDisplayName('XXBT') → 'XBT'
+ */
+function getAssetDisplayName(asset) {
+  if (!asset) return asset;
+  return state.assetDisplayNames[asset] || asset;
+}
+
+/**
+ * Get internal asset name from a display name.
+ * e.g., getInternalFromDisplay('XBT') → 'XXBT'
+ */
+function getInternalFromDisplay(displayName) {
+  if (!displayName) return displayName;
+  return state.internalFromDisplay[displayName] || displayName;
+}
+
+/**
  * Convert altname to internal key.
  * Orders use altname (ETHEUR), we need internal key (XETHZEUR).
  */
@@ -31,11 +85,24 @@ function toInternalPair(pairName) {
 
 /**
  * Find pair for asset using assetToPairMap (populated from Kraken API).
+ * Accepts BOTH internal names (XXBT) AND display names (XBT).
  */
 function findPairForAsset(assetName) {
   if (!state.assetToPairMap) return null;
   const normalized = assetName.toUpperCase().trim();
-  return state.assetToPairMap[normalized] || null;
+  
+  // First try exact match
+  if (state.assetToPairMap[normalized]) {
+    return state.assetToPairMap[normalized];
+  }
+  
+  // Try converting display name to internal
+  const internal = state.internalFromDisplay[normalized];
+  if (internal && state.assetToPairMap[internal]) {
+    return state.assetToPairMap[internal];
+  }
+  
+  return null;
 }
 
 /**
@@ -87,5 +154,8 @@ module.exports = {
   toInternalPair,
   findPairForAsset,
   getAssetFromPair,
+  getAssetDisplayName,
+  getInternalFromDisplay,
+  fetchAssetDisplayNames,
   fetchPairs
 };

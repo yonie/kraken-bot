@@ -76,6 +76,9 @@ async function init() {
   log('[INIT] Fetching trading pairs...');
   await kraken.fetchPairs();
   
+  log('[INIT] Fetching asset display names...');
+  await kraken.fetchAssetDisplayNames();
+  
   log('[INIT] Fetching market data...');
   await kraken.refreshAll();
   

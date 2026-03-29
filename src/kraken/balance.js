@@ -5,7 +5,7 @@
 
 const { state, log, saveTradeHistory, saveAnalytics } = require('../state');
 const { waitForRateLimit, api } = require('./api');
-const { findPairForAsset, getAssetFromPair } = require('./pairs');
+const { findPairForAsset, getAssetFromPair, getAssetDisplayName } = require('./pairs');
 
 async function fetchBalance() {
   await waitForRateLimit(1);
@@ -79,6 +79,7 @@ async function fetchLedgers(days = 7) {
           id,
           type: entry.type,
           asset: entry.asset,
+          displayName: getAssetDisplayName(entry.asset),
           amount: parseFloat(entry.amount),
           fee: parseFloat(entry.fee),
           time: entry.time,
@@ -169,6 +170,7 @@ function calculateTradeAnalytics() {
           
           recentActivity.push({
             asset,
+            displayName: getAssetDisplayName(asset),
             pnl,
             pnlPercent: costBasisUsed > 0 ? (pnl / costBasisUsed) * 100 : 0,
             sellTime: trade.time,
@@ -339,6 +341,8 @@ function getEnrichedPositions() {
     const unrealizedPnL = currentValue - costBasis;
     
     positions[asset] = {
+      asset,
+      displayName: getAssetDisplayName(asset),
       amount,
       avgCost,
       costBasis,

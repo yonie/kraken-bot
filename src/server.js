@@ -430,20 +430,50 @@ function getAssetDetails(assetName) {
 function getFullState() {
   const positions = kraken.getEnrichedPositions();
   
+  // Transform orders to include displayName
+  const ordersWithDisplayNames = {};
+  for (const [id, order] of Object.entries(state.orders || {})) {
+    const pair = order.descr?.pair || '';
+    const baseAsset = kraken.getAssetFromPair(pair);
+    ordersWithDisplayNames[id] = {
+      ...order,
+      displayName: kraken.getAssetDisplayName(baseAsset)
+    };
+  }
+  
+  // Transform trades to include displayName
+  const tradesWithDisplayNames = (state.trades || []).slice(0, 50).map(t => {
+    const baseAsset = kraken.getAssetFromPair(t.pair);
+    return {
+      ...t,
+      displayName: kraken.getAssetDisplayName(baseAsset)
+    };
+  });
+  
+  // Transform ticker to include displayName for each pair
+  const tickerWithDisplayNames = {};
+  for (const [pair, data] of Object.entries(state.ticker || {})) {
+    const baseAsset = kraken.getAssetFromPair(pair);
+    tickerWithDisplayNames[pair] = {
+      ...data,
+      displayName: kraken.getAssetDisplayName(baseAsset)
+    };
+  }
+  
   return {
     // Balances
     balance: state.tradeBalance,
     wallet: state.wallet,
     
     // Market
-    ticker: state.ticker,
+    ticker: tickerWithDisplayNames,
     greedIndex: state.greedIndex,
     greedClass: state.greedClassification,
     globalMarket: state.globalMarket,
     
     // Trading
-    orders: state.orders,
-    trades: state.trades.slice(0, 50),
+    orders: ordersWithDisplayNames,
+    trades: tradesWithDisplayNames,
     positions,
     ledgers: state.ledgers || [],
     

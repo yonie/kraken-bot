@@ -34,8 +34,11 @@ module.exports = {
   
   // Pairs
   fetchPairs: pairs.fetchPairs,
+  fetchAssetDisplayNames: pairs.fetchAssetDisplayNames,
   findPairForAsset: pairs.findPairForAsset,
   getAssetFromPair: pairs.getAssetFromPair,
+  getAssetDisplayName: pairs.getAssetDisplayName,
+  getInternalFromDisplay: pairs.getInternalFromDisplay,
   toInternalPair: pairs.toInternalPair,
   
   // Market data
