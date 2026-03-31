@@ -169,14 +169,38 @@ async function buildContext() {
     }
   }
   
+  // Pre-compute last sell price per pair from full trade history (mirrors guardrail logic exactly)
+  const lastSellByPair = {};
+  const allTrades = Object.values(state.fullTradeHistory?.trades || {});
+  allTrades.sort((a, b) => b.time - a.time);
+  for (const trade of allTrades) {
+    if (trade.type !== 'sell') continue;
+    const key = kraken.toInternalPair(trade.pair);
+    if (key && !lastSellByPair[key]) {
+      lastSellByPair[key] = parseFloat(trade.price);
+    }
+  }
+
+  for (const m of topByVolume) {
+    const lastSellPrice = lastSellByPair[kraken.toInternalPair(m.pair)] ?? null;
+    m.lastSellPrice = lastSellPrice;
+    m.reentryFloor = lastSellPrice ? +(lastSellPrice * 0.92).toFixed(6) : null;
+  }
+
   // Rank by 7-day momentum (correct implementation per academic research)
   // Filter out assets without 7-day data, then sort by formation period returns
   const movers = Object.entries(state.ticker)
-    .map(([pair, t]) => ({
-      pair,
-      ...t,
-      change7dPct: ohlcReturns[pair] !== undefined ? ohlcReturns[pair] : null
-    }))
+    .map(([pair, t]) => {
+      const internalPair = kraken.toInternalPair(pair);
+      const lastSellPrice = lastSellByPair[internalPair] ?? null;
+      return {
+        pair,
+        ...t,
+        change7dPct: ohlcReturns[pair] !== undefined ? ohlcReturns[pair] : null,
+        lastSellPrice,
+        reentryFloor: lastSellPrice ? +(lastSellPrice * 0.92).toFixed(6) : null,
+      };
+    })
     .filter(m => m.change7dPct !== null && !isNaN(m.change7dPct))
     .sort((a, b) => b.change7dPct - a.change7dPct)
     .slice(0, 20);
