@@ -206,7 +206,9 @@ function buildPrompt(ctx) {
     high_24h: m.high24,
     range_24h_pct: m.range24hPct,
     volume_eur: m.volumeEur,
-    ohlc_7d: ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null
+    ohlc_7d: ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null,
+    last_sell_price: m.lastSellPrice ?? null,
+    reentry_floor: m.reentryFloor ?? null,
   }));
   
   const moversFormatted = ctx.movers.slice(0, 10).map(m => ({
@@ -215,7 +217,9 @@ function buildPrompt(ctx) {
     change_7d_pct: m.change7dPct,
     change_24h_pct: m.change24hPct,
     volume_eur: m.volumeEur,
-    ohlc_7d: ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null
+    ohlc_7d: ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null,
+    last_sell_price: m.lastSellPrice ?? null,
+    reentry_floor: m.reentryFloor ?? null,
   }));
   
   const recentTradesFormatted = ctx.recentTrades.slice(0, 10).map(t => ({
