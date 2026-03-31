@@ -90,7 +90,7 @@ async function executeCommands(actions) {
         const internalOrderPair = kraken.toInternalPair(orderPair);
         return internalPair && internalOrderPair && internalPair === internalOrderPair;
       });
-      
+
       for (const [orderId, order] of existingOrders) {
         log(`[AI-EXEC] Cancelling existing ${order.descr?.type} order for ${pair}: ${orderId}`);
         const cancelResult = await kraken.cancelOrder(orderId);
@@ -102,9 +102,9 @@ async function executeCommands(actions) {
         }
         await new Promise(r => setTimeout(r, 500));
       }
-      
+
       let result;
-      
+
       if (action.action === 'SELL') {
         const baseAsset = state.pairs[pair]?.base;
         // Check for staked/standard variants (DOT.S, DOT.P, DOT)
@@ -120,14 +120,30 @@ async function executeCommands(actions) {
             }
           }
         }
-        
+
         log(`[AI-EXEC] SELL ${action.asset}: pair=${pair}, baseAsset=${baseAsset}, holding=${holding?.amount}, price=${action.price}`);
-        
+
         if (!holding || holding.amount <= 0) {
           results.push({ ...action, success: false, error: 'no_holdings' });
           continue;
         }
-        
+
+        // GUARDRAIL: Never sell below avg entry price + fees (~0.48% round trip, enforcing 1% floor)
+        const SELL_FLOOR_MULTIPLIER = 1.08; // 8% above entry = meaningful profit floor
+        const enrichedPositions = kraken.getEnrichedPositions();
+        const enrichedPos = enrichedPositions[baseAsset];
+        if (enrichedPos && enrichedPos.avgCost > 0) {
+          const minSellPrice = enrichedPos.avgCost * SELL_FLOOR_MULTIPLIER;
+          if (action.price < minSellPrice) {
+            const reason = `sell_below_floor: your limit ${action.price.toFixed(4)} < min ${minSellPrice.toFixed(4)} (entry ${enrichedPos.avgCost.toFixed(4)} + 8%). Raise your sell price.`;
+            log(`[GUARDRAIL] SELL ${action.asset} blocked: ${reason}`);
+            state.aiExecutionHistory.executions.push({ timestamp: Date.now(), action: 'SELL', asset: action.asset, result: 'rejected', error: reason });
+            saveAIExecutions();
+            results.push({ ...action, success: false, error: reason });
+            continue;
+          }
+        }
+
         const volumeAttempts = [1.0, 0.999, 0.99];
         for (const multiplier of volumeAttempts) {
           const volume = holding.amount * multiplier;
@@ -151,12 +167,33 @@ async function executeCommands(actions) {
       } else if (action.action === 'BUY') {
         // Kraken wallet uses ZEUR for EUR
         const available = state.wallet['ZEUR']?.amount || state.wallet['EUR']?.amount || 0;
-        
+
         if (available < action.amountEur) {
           results.push({ ...action, success: false, error: 'insufficient_balance' });
           continue;
         }
-        
+
+        // GUARDRAIL: Don't re-buy above the price we last sold this asset for
+        const allTrades = Object.values(state.fullTradeHistory?.trades || {});
+        const internalPair = kraken.toInternalPair(pair);
+        const pairTrades = allTrades
+          .filter(t => kraken.toInternalPair(t.pair) === internalPair)
+          .sort((a, b) => b.time - a.time);
+        const lastSellTrade = pairTrades.find(t => t.type === 'sell');
+        if (lastSellTrade) {
+          const lastSellPrice = parseFloat(lastSellTrade.price);
+          const maxReentryPrice = lastSellPrice * 0.92; // must be at least 8% below last exit
+          const currentPrice = state.ticker[pair]?.price || 0;
+          if (currentPrice > maxReentryPrice) {
+            const reason = `buy_above_reentry_floor: current price ${currentPrice.toFixed(4)} > max re-entry ${maxReentryPrice.toFixed(4)} (last sell ${lastSellPrice.toFixed(4)} - 8%). Wait for a deeper dip before re-entering.`;
+            log(`[GUARDRAIL] BUY ${action.asset} blocked: ${reason}`);
+            state.aiExecutionHistory.executions.push({ timestamp: Date.now(), action: 'BUY', asset: action.asset, result: 'rejected', error: reason });
+            saveAIExecutions();
+            results.push({ ...action, success: false, error: reason });
+            continue;
+          }
+        }
+
         result = await kraken.marketBuy(pair, action.amountEur);
       }
       

@@ -110,8 +110,10 @@ async function init() {
   
   // Fetch trade history in background (can take a while)
   log('[INIT] Fetching trade history (background)...');
+  state._tradeHistoryReady = false;
   kraken.fetchAllTradeHistory().then(() => {
     log('[INIT] Trade history loaded');
+    state._tradeHistoryReady = true;
     server.broadcast('state', server.getFullState());
   });
   
@@ -186,8 +188,19 @@ function startScheduledTasks() {
   if (canUseAI && config.aiEnabled) {
     const intervalMs = config.analysisIntervalMinutes * 60 * 1000;
     
-    // Run initial analysis after 30 seconds
-    setTimeout(async () => {
+    // Run initial analysis once trade history is ready (poll every 5s, max 5min)
+    const waitAndRunInitialAnalysis = async () => {
+      const maxWait = 5 * 60 * 1000;
+      const pollInterval = 5 * 1000;
+      let waited = 0;
+      while (!state._tradeHistoryReady && waited < maxWait) {
+        await new Promise(r => setTimeout(r, pollInterval));
+        waited += pollInterval;
+      }
+      if (!state._tradeHistoryReady) {
+        log('[SCHEDULER] Trade history not ready after 5min — skipping initial AI analysis');
+        return;
+      }
       try {
         log('[SCHEDULER] Running initial AI analysis...');
         await ai.runAnalysis(true);  // force=true to bypass cooldown
@@ -196,7 +209,8 @@ function startScheduledTasks() {
       } catch (e) {
         console.error('[SCHEDULER] AI analysis error:', e.message);
       }
-    }, 30 * 1000);
+    };
+    waitAndRunInitialAnalysis();
     
     // Then run periodically
     setInterval(async () => {
