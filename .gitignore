@@ -7,6 +7,7 @@ launch.json
 
 # Data directory (contains sensitive trading data)
 data/
+!data/strategy.example.md
 
 # User's personal strategy (override)
 # Note: strategy.example.md is tracked in git as default
