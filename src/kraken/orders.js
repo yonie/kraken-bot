@@ -140,6 +140,34 @@ async function marketBuy(pair, amountEUR) {
   });
 }
 
+async function marketSell(pair, volume) {
+  const { getClient } = require('./api');
+  const pairInfo = state.pairs[pair];
+  if (!pairInfo) throw new Error(`Unknown pair: ${pair}`);
+
+  const lotDecimals = pairInfo.lot_decimals || 8;
+  const formattedVolume = Number(volume.toFixed(lotDecimals));
+
+  log(`[ORDER] Market SELL: ${formattedVolume} ${pair}`);
+
+  return new Promise((resolve) => {
+    getClient().api('AddOrder', {
+      pair,
+      type: 'sell',
+      ordertype: 'market',
+      volume: formattedVolume
+    }, (error, data) => {
+      if (error) {
+        log(`[ORDER] Market sell failed: ${error.message}`);
+        resolve({ success: false, error: error.message });
+      } else {
+        log(`[ORDER] Market sell success: ${data.result?.descr?.order}`);
+        resolve({ success: true, order: data.result });
+      }
+    });
+  });
+}
+
 async function cancelOrder(orderId) {
   const { getClient } = require('./api');
   
@@ -159,5 +187,6 @@ module.exports = {
   limitBuy,
   limitSell,
   marketBuy,
+  marketSell,
   cancelOrder
 };
