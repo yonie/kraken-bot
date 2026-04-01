@@ -158,6 +158,8 @@
     button:hover { opacity: 0.9; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     button.small { padding: 4px 8px; font-size: 0.8rem; }
+    button.sell-btn { background: var(--red); opacity: 0.7; }
+    button.sell-btn:hover { opacity: 1; }
     button.danger { background: var(--red); }
     
     table {
@@ -610,7 +612,7 @@
         <div class="card-content table-scroll">
           <table>
             <thead>
-              <tr><th>Asset</th><th>Value</th><th>P&L</th><th>Days</th></tr>
+              <tr><th>Asset</th><th>Value</th><th>P&L</th><th>Days</th><th></th></tr>
             </thead>
             <tbody id="positionsTable">
               <tr><td colspan="4" class="loading">Loading...</td></tr>
@@ -774,7 +776,28 @@
         </div>
       </div>
     </div>
-  
+
+    <!-- Sell Confirmation Modal -->
+    <div class="modal-overlay" id="sellModal" onclick="closeSellModal(event)">
+      <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+          <h2>Confirm Sell</h2>
+          <button class="modal-close" onclick="closeSellModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+          <p id="sellModalInfo" style="margin-bottom: 16px;"></p>
+          <div id="sellPasswordSection">
+            <input type="password" id="sellPasswordInput" placeholder="Password" style="width: 100%; padding: 10px; border: 1px solid var(--bg3); border-radius: 6px; background: var(--bg); color: var(--text); margin-bottom: 12px;">
+          </div>
+          <div id="sellModalError" style="color: var(--red); margin-bottom: 8px; display: none;"></div>
+          <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <button onclick="closeSellModal()" style="background: var(--bg3);">Cancel</button>
+            <button onclick="confirmSell()" class="sell-btn" id="confirmSellBtn">Sell at Market</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   <script>
     let ws = null;
     let reconnectTimer = null;
@@ -1035,10 +1058,10 @@
     function updatePositions(positions) {
       const tbody = document.getElementById('positionsTable');
       if (!positions || Object.keys(positions).length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="color: var(--text2)">No positions</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="color: var(--text2)">No positions</td></tr>';
         return;
       }
-      
+
       tbody.innerHTML = Object.entries(positions)
         .sort((a, b) => b[1].currentValue - a[1].currentValue)
         .map(([asset, p]) => `
@@ -1049,8 +1072,75 @@
               ${p.unrealizedPnL >= 0 ? '+' : ''}${p.unrealizedPnL.toFixed(2)} (${p.unrealizedPct.toFixed(1)}%)
             </td>
             <td>${p.holdingDays}d</td>
+            <td><button class="small sell-btn" onclick="sellPosition('${asset}', '${p.displayName}', ${p.unrealizedPnL.toFixed(2)}, ${p.unrealizedPct.toFixed(1)})">Sell</button></td>
           </tr>
         `).join('');
+    }
+
+    let pendingSellAsset = null;
+    let pendingSellDisplayName = null;
+
+    function sellPosition(asset, displayName, pnl, pct) {
+      pendingSellAsset = asset;
+      pendingSellDisplayName = displayName;
+      const pnlStr = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + ' EUR (' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%)';
+      document.getElementById('sellModalInfo').textContent = 'Market sell ALL ' + displayName + '? P&L: ' + pnlStr;
+      document.getElementById('sellModalError').style.display = 'none';
+      // Reuse strategyPassword if already entered this session
+      if (strategyPassword) {
+        document.getElementById('sellPasswordSection').style.display = 'none';
+      } else {
+        document.getElementById('sellPasswordSection').style.display = 'block';
+        document.getElementById('sellPasswordInput').value = '';
+      }
+      document.getElementById('sellModal').classList.add('active');
+      document.body.style.overflow = 'hidden';
+      if (!strategyPassword) document.getElementById('sellPasswordInput').focus();
+    }
+
+    function closeSellModal(event) {
+      if (event && event.target !== event.currentTarget) return;
+      document.getElementById('sellModal').classList.remove('active');
+      document.body.style.overflow = '';
+      pendingSellAsset = null;
+    }
+
+    async function confirmSell() {
+      const password = strategyPassword || document.getElementById('sellPasswordInput').value;
+      if (!password) {
+        document.getElementById('sellModalError').textContent = 'Please enter password';
+        document.getElementById('sellModalError').style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('confirmSellBtn');
+      btn.disabled = true;
+      btn.textContent = 'Selling...';
+
+      try {
+        const res = await fetch('/api/sell', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ asset: pendingSellAsset, password })
+        });
+        const result = await res.json();
+        if (result.success) {
+          strategyPassword = password;
+          closeSellModal();
+          alert('Sold ' + pendingSellDisplayName + ' at market');
+        } else {
+          if (result.error === 'Invalid password') strategyPassword = '';
+          document.getElementById('sellModalError').textContent = result.error;
+          document.getElementById('sellModalError').style.display = 'block';
+          document.getElementById('sellPasswordSection').style.display = 'block';
+        }
+      } catch (e) {
+        document.getElementById('sellModalError').textContent = e.message;
+        document.getElementById('sellModalError').style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sell at Market';
+      }
     }
     
     function updateOrders(orders) {

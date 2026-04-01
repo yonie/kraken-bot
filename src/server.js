@@ -129,7 +129,10 @@ function handleAPI(req, res, pathname, url) {
           
           case '/api/strategy':
             return res.end(JSON.stringify(handleStrategyUpdate(data)));
-          
+
+          case '/api/sell':
+            return res.end(JSON.stringify(await handleMarketSell(data)));
+
           default:
             res.writeHead(404);
             return res.end(JSON.stringify({ error: 'Not found' }));
@@ -282,6 +285,70 @@ function handleStrategyUpdate(data) {
   } catch (e) {
     return { success: false, error: `Failed to save: ${e.message}` };
   }
+}
+
+async function handleMarketSell(data) {
+  const { asset, password } = data;
+
+  if (!config.editPassword) {
+    return { success: false, error: 'Password protection not configured. Set EDIT_PASSWORD in environment.' };
+  }
+  if (!password || password !== config.editPassword) {
+    return { success: false, error: 'Invalid password' };
+  }
+  if (!asset) {
+    return { success: false, error: 'Missing asset' };
+  }
+
+  const pair = kraken.findPairForAsset(asset);
+  if (!pair) {
+    return { success: false, error: `No trading pair found for ${asset}` };
+  }
+
+  const positions = kraken.getEnrichedPositions();
+  const position = positions[asset];
+  if (!position || position.amount <= 0) {
+    return { success: false, error: `No position found for ${asset}` };
+  }
+
+  // Cancel any existing open orders for this pair
+  const internalPair = kraken.toInternalPair(pair);
+  const existingOrders = Object.entries(state.orders).filter(([id, order]) => {
+    const orderPair = order.descr?.pair;
+    if (!orderPair) return false;
+    return kraken.toInternalPair(orderPair) === internalPair;
+  });
+  for (const [orderId] of existingOrders) {
+    log(`[SELL-UI] Cancelling existing order ${orderId} for ${asset}`);
+    await kraken.cancelOrder(orderId);
+    delete state.orders[orderId];
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  // Market sell with volume retry for precision
+  const volumeAttempts = [1.0, 0.999, 0.99];
+  for (const multiplier of volumeAttempts) {
+    const volume = position.amount * multiplier;
+    log(`[SELL-UI] Market SELL ${volume.toFixed(8)} ${asset} (${multiplier * 100}% of position)`);
+    const result = await kraken.marketSell(pair, volume);
+    if (result?.success) {
+      log(`[SELL-UI] Successfully sold ${asset} at market`);
+      await new Promise(r => setTimeout(r, 2000));
+      await kraken.fetchNewTrades();
+      await kraken.fetchBalance();
+      await kraken.fetchOrders();
+      broadcast('state', getFullState());
+      return { success: true, asset, message: `Sold all ${position.displayName} at market` };
+    }
+    const errMsg = result?.error || '';
+    if (multiplier < 0.99 || (!errMsg.includes('volume') && !errMsg.includes('Insufficient funds'))) {
+      return { success: false, error: `Sell failed: ${errMsg}` };
+    }
+    log(`[SELL-UI] Sell at ${multiplier * 100}% failed (${errMsg}), retrying...`);
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  return { success: false, error: 'Sell failed after all volume attempts' };
 }
 
 /**
