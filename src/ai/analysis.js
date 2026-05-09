@@ -199,28 +199,23 @@ function buildPrompt(ctx) {
   const newsCrypto = ctx.news.crypto?.items?.slice(0, 5).map(item => item.title) || [];
   const newsKraken = ctx.news.kraken?.items?.slice(0, 3).map(item => item.title) || [];
   
-  const topByVolumeFormatted = ctx.topByVolume.slice(0, 20).map(m => ({
-    pair: kraken.getAssetFromPair(m.pair),
+  const formatCandidate = (m) => ({
+    asset: kraken.getAssetFromPair(m.pair),
     price: m.price,
+    change_24h_pct: m.change24hPct,
+    change_7d_pct: m.change7dPct ?? null,
     low_24h: m.low24,
     high_24h: m.high24,
     range_24h_pct: m.range24hPct,
     volume_eur: m.volumeEur,
     ohlc_7d: ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null,
     last_sell_price: m.lastSellPrice ?? null,
-    reentry_floor: m.reentryFloor ?? null,
-  }));
-  
-  const moversFormatted = ctx.movers.slice(0, 10).map(m => ({
-    pair: kraken.getAssetFromPair(m.pair),
-    price: m.price,
-    change_7d_pct: m.change7dPct,
-    change_24h_pct: m.change24hPct,
-    volume_eur: m.volumeEur,
-    ohlc_7d: ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null,
-    last_sell_price: m.lastSellPrice ?? null,
-    reentry_floor: m.reentryFloor ?? null,
-  }));
+    reentry_ceiling: m.reentryCeiling ?? null,
+  });
+
+  const topByVolumeFormatted = ctx.topByVolume.slice(0, 30).map(formatCandidate);
+  const moversFormatted = ctx.movers.slice(0, 20).map(formatCandidate);
+  const losersFormatted = (ctx.losers || []).slice(0, 20).map(formatCandidate);
   
   const recentTradesFormatted = ctx.recentTrades.slice(0, 10).map(t => ({
     time: t.time,
@@ -376,7 +371,8 @@ function buildPrompt(ctx) {
       created: o.created
     })),
     top_by_volume: topByVolumeFormatted,
-    top_movers_7d: moversFormatted,
+    top_movers_24h: moversFormatted,
+    top_losers_24h: losersFormatted,
     recent_trades_7d: recentTradesFormatted,
     deposits_withdrawals_7d: depositsFormatted,
     execution_results: executionResultsFormatted
@@ -395,8 +391,9 @@ RISK: [low/medium/high]
 ANALYSIS: [Plain language reasoning. What's happening and why. Be decisive.]
 DECISION: [Your action and why]
 
-COMMANDS:
-[One command per line, or HOLD]
+---COMMANDS---
+[One command per line, or HOLD. Do NOT leave blank lines inside this block.]
+---END---
 
 === COMMAND SYNTAX ===
 BUY <ASSET> <EUR> - market buy EUR worth (executes immediately)

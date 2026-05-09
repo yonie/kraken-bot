@@ -204,11 +204,38 @@ async function fetchGreedIndex() {
   });
 }
 
+const ohlcCache = new Map();
+const OHLC_CACHE_TTL_MS = 30 * 60 * 1000; // 30min for daily candles
+
+const depthCache = new Map();
+const DEPTH_CACHE_TTL_MS = 60 * 1000; // 60s — cycles are 10min apart
+
+async function runWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function pump() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await worker(items[i], i);
+    }
+  }
+  const runners = Array.from({ length: Math.min(limit, items.length) }, pump);
+  await Promise.all(runners);
+  return results;
+}
+
 async function fetchOHLC(pair, interval = 1440) {
+  const cacheKey = `${pair}:${interval}`;
+  const cached = ohlcCache.get(cacheKey);
+  if (cached && Date.now() - cached.t < OHLC_CACHE_TTL_MS) {
+    return cached.v;
+  }
+
   return new Promise((resolve) => {
     const krakenPair = pair.startsWith('X') || pair.endsWith('EUR') ? pair : findPairForAsset(pair);
     if (!krakenPair) return resolve(null);
-    
+
     const url = `https://api.kraken.com/0/public/OHLC?pair=${krakenPair}&interval=${interval}`;
     
     https.get(url, (res) => {
@@ -238,7 +265,8 @@ async function fetchOHLC(pair, interval = 1440) {
             vwap: parseFloat(c[5]),
             volume: parseFloat(c[6])
           }));
-          
+
+          ohlcCache.set(cacheKey, { t: Date.now(), v: candles });
           resolve(candles);
         } catch (e) {
           resolve(null);
@@ -250,27 +278,26 @@ async function fetchOHLC(pair, interval = 1440) {
 
 async function fetchOHLCForPairs(pairs) {
   const results = {};
-  
-  for (const pair of pairs) {
+  await runWithConcurrency(pairs, 4, async (pair) => {
     try {
       const ohlc = await fetchOHLC(pair);
-      if (ohlc) {
-        results[pair] = ohlc;
-      }
-      await new Promise(r => setTimeout(r, 200));
-    } catch (e) {
-      // Continue on error
-    }
-  }
-  
+      if (ohlc) results[pair] = ohlc;
+    } catch (e) {}
+  });
   return results;
 }
 
 async function fetchDepth(pair, count = 20) {
+  const cacheKey = `${pair}:${count}`;
+  const cached = depthCache.get(cacheKey);
+  if (cached && Date.now() - cached.t < DEPTH_CACHE_TTL_MS) {
+    return cached.v;
+  }
+
   return new Promise((resolve) => {
     const krakenPair = pair.startsWith('X') || pair.endsWith('EUR') ? pair : findPairForAsset(pair);
     if (!krakenPair) return resolve(null);
-    
+
     const url = `https://api.kraken.com/0/public/Depth?pair=${krakenPair}&count=${count}`;
     
     https.get(url, (res) => {
@@ -325,7 +352,7 @@ async function fetchDepth(pair, count = 20) {
           const askWalls = asks.slice(0, 10).sort((a, b) => b.volume - a.volume).slice(0, 3)
             .map(w => ({ price: w.price, volume: w.volume }));
           
-          resolve({
+          const value = {
             bids,
             asks,
             bidDepth5pct,
@@ -333,7 +360,9 @@ async function fetchDepth(pair, count = 20) {
             bidWalls,
             askWalls,
             spread: asks.length > 0 && bids.length > 0 ? asks[0].price - bids[0].price : 0
-          });
+          };
+          depthCache.set(cacheKey, { t: Date.now(), v: value });
+          resolve(value);
         } catch (e) {
           resolve(null);
         }
@@ -344,19 +373,12 @@ async function fetchDepth(pair, count = 20) {
 
 async function fetchDepthForPairs(pairs) {
   const results = {};
-  
-  for (const pair of pairs) {
+  await runWithConcurrency(pairs, 4, async (pair) => {
     try {
       const depth = await fetchDepth(pair);
-      if (depth) {
-        results[pair] = depth;
-      }
-      await new Promise(r => setTimeout(r, 150));
-    } catch (e) {
-      // Continue on error
-    }
-  }
-  
+      if (depth) results[pair] = depth;
+    } catch (e) {}
+  });
   return results;
 }
 

@@ -185,7 +185,7 @@ async function executeCommands(actions) {
           const maxReentryPrice = lastSellPrice * 0.92; // must be at least 8% below last exit
           const currentPrice = state.ticker[pair]?.price || 0;
           if (currentPrice > maxReentryPrice) {
-            const reason = `buy_above_reentry_floor: current price ${currentPrice.toFixed(4)} > max re-entry ${maxReentryPrice.toFixed(4)} (last sell ${lastSellPrice.toFixed(4)} - 8%). Wait for a deeper dip before re-entering.`;
+            const reason = `buy_above_reentry_ceiling: current price ${currentPrice.toFixed(4)} > max re-entry ${maxReentryPrice.toFixed(4)} (last sell ${lastSellPrice.toFixed(4)} - 8%). Wait for a deeper dip before re-entering.`;
             log(`[GUARDRAIL] BUY ${action.asset} blocked: ${reason}`);
             state.aiExecutionHistory.executions.push({ timestamp: Date.now(), action: 'BUY', asset: action.asset, result: 'rejected', error: reason });
             saveAIExecutions();
