@@ -139,37 +139,7 @@ async function buildContext() {
     };
   }
   
-  const positionPairs = new Set();
-  for (const asset in enriched) {
-      const pair = state.assetToPairMap[asset] || null;
-    if (pair) positionPairs.add(pair);
-  }
-  
-  const topByVolume = Object.entries(state.ticker)
-    .map(([pair, t]) => ({ pair, ...t }))
-    .sort((a, b) => (b.volumeEur || 0) - (a.volumeEur || 0))
-    .slice(0, 20);
-  
-  for (const t of topByVolume) {
-    positionPairs.add(t.pair);
-  }
-  
-  const ohlcData = await kraken.fetchOHLCForPairs([...positionPairs]);
-  
-  // Calculate 7-day momentum from OHLC (formation period per Tzouvanas et al.)
-  // This is critical: we rank by 7-day returns, NOT 24h spikes
-  const ohlcReturns = {};
-  for (const [pair, candles] of Object.entries(ohlcData)) {
-    if (candles && candles.length >= 7) {
-      const currentPrice = candles[candles.length - 1].close;
-      const price7dAgo = candles[candles.length - 7].close;
-      if (price7dAgo > 0) {
-        ohlcReturns[pair] = ((currentPrice - price7dAgo) / price7dAgo) * 100;
-      }
-    }
-  }
-  
-  // Pre-compute last sell price per pair from full trade history (mirrors guardrail logic exactly)
+  // Pre-compute last sell price per internal pair (mirrors guardrail logic exactly)
   const lastSellByPair = {};
   const allTrades = Object.values(state.fullTradeHistory?.trades || {});
   allTrades.sort((a, b) => b.time - a.time);
@@ -181,58 +151,78 @@ async function buildContext() {
     }
   }
 
-  for (const m of topByVolume) {
-    const lastSellPrice = lastSellByPair[kraken.toInternalPair(m.pair)] ?? null;
-    m.lastSellPrice = lastSellPrice;
-    m.reentryFloor = lastSellPrice ? +(lastSellPrice * 0.92).toFixed(6) : null;
+  const decorate = (pair, t) => {
+    const lastSellPrice = lastSellByPair[kraken.toInternalPair(pair)] ?? null;
+    return {
+      pair,
+      ...t,
+      lastSellPrice,
+      // Max price at which a re-buy is allowed (lastSell * 0.92).
+      // Code rejects BUY when current > this value.
+      reentryCeiling: lastSellPrice ? +(lastSellPrice * 0.92).toFixed(6) : null,
+    };
+  };
+
+  // Universe-wide discovery from ticker (no extra API calls):
+  // top by volume, top movers 24h, top losers 24h. All filtered to liquid pairs.
+  const LIQUIDITY_FLOOR_EUR = 50000;
+  const tickerEntries = Object.entries(state.ticker)
+    .map(([pair, t]) => decorate(pair, t))
+    .filter(m => (m.volumeEur || 0) >= LIQUIDITY_FLOOR_EUR);
+
+  const topByVolume = [...tickerEntries]
+    .sort((a, b) => (b.volumeEur || 0) - (a.volumeEur || 0))
+    .slice(0, 30);
+
+  const movers24h = [...tickerEntries]
+    .filter(m => Number.isFinite(m.change24hPct))
+    .sort((a, b) => (b.change24hPct || 0) - (a.change24hPct || 0))
+    .slice(0, 20);
+
+  const losers24h = [...tickerEntries]
+    .filter(m => Number.isFinite(m.change24hPct))
+    .sort((a, b) => (a.change24hPct || 0) - (b.change24hPct || 0))
+    .slice(0, 20);
+
+  // Curated set for OHLC + Depth: held positions + BTC/ETH + the candidates we'll show the LLM
+  const enrichmentPairs = new Set(['XXBTZEUR', 'XETHZEUR']);
+  for (const asset in enriched) {
+    const pair = state.assetToPairMap[asset] || null;
+    if (pair) enrichmentPairs.add(pair);
+  }
+  for (const list of [topByVolume, movers24h, losers24h]) {
+    for (const m of list) enrichmentPairs.add(m.pair);
   }
 
-  // Rank by 7-day momentum (correct implementation per academic research)
-  // Filter out assets without 7-day data, then sort by formation period returns
-  const movers = Object.entries(state.ticker)
-    .map(([pair, t]) => {
-      const internalPair = kraken.toInternalPair(pair);
-      const lastSellPrice = lastSellByPair[internalPair] ?? null;
-      return {
-        pair,
-        ...t,
-        change7dPct: ohlcReturns[pair] !== undefined ? ohlcReturns[pair] : null,
-        lastSellPrice,
-        reentryFloor: lastSellPrice ? +(lastSellPrice * 0.92).toFixed(6) : null,
-      };
-    })
-    .filter(m => m.change7dPct !== null && !isNaN(m.change7dPct))
-    .sort((a, b) => b.change7dPct - a.change7dPct)
-    .slice(0, 20);
-  
-  const positionPairsArray = [...positionPairs].filter(p => {
-    const asset = kraken.getAssetFromPair(p);
-    return enriched[asset] || enriched['X' + asset] || enriched['XX' + asset];
-  });
-  
-  // Always fetch depth for BTC, ETH, and top movers by volume
-  const btcPair = 'XXBTZEUR';
-  const ethPair = 'XETHZEUR';
-  const depthPairs = new Set([btcPair, ethPair]);
-  
-  // Add depth for held positions
+  const ohlcData = await kraken.fetchOHLCForPairs([...enrichmentPairs]);
+
+  // 7-day return as enrichment (not as a discovery filter).
+  // Daily candles: span of 7 days needs index gap of 7 (i.e. need >= 8 candles).
+  const ohlcReturns = {};
+  for (const [pair, candles] of Object.entries(ohlcData)) {
+    if (candles && candles.length >= 8) {
+      const current = candles[candles.length - 1].close;
+      const past = candles[candles.length - 8].close;
+      if (past > 0) ohlcReturns[pair] = ((current - past) / past) * 100;
+    }
+  }
+  for (const list of [topByVolume, movers24h, losers24h]) {
+    for (const m of list) {
+      m.change7dPct = ohlcReturns[m.pair] ?? null;
+    }
+  }
+
+  // Depth: held positions + BTC/ETH + top-volume + biggest 24h moves (where liquid enough)
+  const depthPairs = new Set(['XXBTZEUR', 'XETHZEUR']);
   Object.keys(enriched).forEach(a => {
-      const pair = state.assetToPairMap[a] || null;
+    const pair = state.assetToPairMap[a] || null;
     if (pair) depthPairs.add(pair);
   });
-  
-  // Add depth for top 20 by volume
-  topByVolume.slice(0, 20).forEach(m => {
-    if (m.pair) depthPairs.add(m.pair);
+  topByVolume.slice(0, 20).forEach(m => depthPairs.add(m.pair));
+  [...movers24h.slice(0, 10), ...losers24h.slice(0, 10)].forEach(m => {
+    if ((m.volumeEur || 0) > 100000) depthPairs.add(m.pair);
   });
-  
-  // Add depth for top 10 movers (potential breakout plays)
-  movers.slice(0, 10).forEach(m => {
-    if (m.pair && (m.volumeEur || 0) > 100000) { // Only if volume > €100k
-      depthPairs.add(m.pair);
-    }
-  });
-  
+
   const depthData = await kraken.fetchDepthForPairs([...depthPairs]);
   
   let assetsUp = 0;
@@ -462,7 +452,8 @@ async function buildContext() {
     cashPct,
     unrealizedPnL: unrealizedPnL.toFixed(2),
     positions,
-    movers,
+    movers: movers24h,
+    losers: losers24h,
     topByVolume,
     recentTrades,
     recentLedgers,
