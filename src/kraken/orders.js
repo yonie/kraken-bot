@@ -168,6 +168,68 @@ async function marketSell(pair, volume) {
   });
 }
 
+async function stopLoss(pair, volume, triggerPrice) {
+  const { getClient } = require('./api');
+  const pairInfo = state.pairs[pair];
+  if (!pairInfo) throw new Error(`Unknown pair: ${pair}`);
+
+  const pairDecimals = pairInfo.pair_decimals || 2;
+  const lotDecimals = pairInfo.lot_decimals || 8;
+  const formattedPrice = Number(triggerPrice.toFixed(pairDecimals));
+  const formattedVolume = Number(volume.toFixed(lotDecimals));
+
+  log(`[ORDER] Stop-loss SELL: ${formattedVolume} ${pair} trigger @ ${formattedPrice} EUR`);
+
+  return new Promise((resolve) => {
+    getClient().api('AddOrder', {
+      pair,
+      type: 'sell',
+      ordertype: 'stop-loss',
+      volume: formattedVolume,
+      price: formattedPrice
+    }, (error, data) => {
+      if (error) {
+        log(`[ORDER] Stop-loss failed: ${error.message}`);
+        resolve({ success: false, error: error.message });
+      } else {
+        log(`[ORDER] Stop-loss placed: ${data.result?.descr?.order}`);
+        resolve({ success: true, order: data.result });
+      }
+    });
+  });
+}
+
+async function editOrder(orderId, pair, newPrice) {
+  const { getClient } = require('./api');
+  const pairInfo = state.pairs[pair];
+  if (!pairInfo) throw new Error(`Unknown pair: ${pair}`);
+
+  const pairDecimals = pairInfo.pair_decimals || 2;
+  const formattedPrice = Number(newPrice.toFixed(pairDecimals));
+
+  log(`[ORDER] Amend order ${orderId}: trigger_price -> ${formattedPrice}`);
+
+  return new Promise((resolve) => {
+    try {
+      getClient().api('AmendOrder', {
+        txid: orderId,
+        trigger_price: String(formattedPrice)
+      }, (error, data) => {
+        if (error) {
+          log(`[ORDER] Amend failed: ${error.message}`);
+          resolve({ success: false, error: error.message });
+        } else {
+          log(`[ORDER] Amend success: ${JSON.stringify(data.result || {})}`);
+          resolve({ success: true, order: data.result });
+        }
+      });
+    } catch (e) {
+      log(`[ORDER] Amend threw: ${e.message}`);
+      resolve({ success: false, error: e.message });
+    }
+  });
+}
+
 async function cancelOrder(orderId) {
   const { getClient } = require('./api');
   
@@ -188,5 +250,7 @@ module.exports = {
   limitSell,
   marketBuy,
   marketSell,
+  stopLoss,
+  editOrder,
   cancelOrder
 };
