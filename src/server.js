@@ -580,6 +580,7 @@ function getFullState() {
     // AI
     analysis: state.llmAnalysis,
     insights: state.insights || [],
+    aiExecutions: (state.aiExecutionHistory?.executions || []).slice(-50).reverse(),
     
     // News
     news: state.news || { crypto: [], kraken: [], world: [], lastUpdate: null },
