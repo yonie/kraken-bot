@@ -11,6 +11,7 @@ const { state, log, loadAllState, recordBalanceSnapshot } = require('./src/state
 const kraken = require('./src/kraken');
 const ai = require('./src/ai');
 const server = require('./src/server');
+const { manageTrailingStops } = require('./src/trailing_stops');
 
 // ============================================
 // CONFIGURATION
@@ -137,6 +138,7 @@ function startScheduledTasks() {
       await kraken.fetchBalance();
       await kraken.fetchOrders();
       await kraken.fetchGreedIndex();
+      await manageTrailingStops();
       server.broadcast('state', server.getFullState());
     } catch (e) {
       console.error('[SCHEDULER] Refresh error:', e.message);

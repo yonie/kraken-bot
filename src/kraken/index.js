@@ -65,6 +65,8 @@ module.exports = {
   limitSell: orders.limitSell,
   marketBuy: orders.marketBuy,
   marketSell: orders.marketSell,
+  stopLoss: orders.stopLoss,
+  editOrder: orders.editOrder,
   cancelOrder: orders.cancelOrder,
   
   // Refresh all

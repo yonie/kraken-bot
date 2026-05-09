@@ -311,13 +311,36 @@ async function handleMarketSell(data) {
     return { success: false, error: `No position found for ${asset}` };
   }
 
-  // Cancel any existing open orders for this pair
   const internalPair = kraken.toInternalPair(pair);
   const existingOrders = Object.entries(state.orders).filter(([id, order]) => {
     const orderPair = order.descr?.pair;
     if (!orderPair) return false;
     return kraken.toInternalPair(orderPair) === internalPair;
   });
+
+  // Fast path: if there's a stop-loss sell on this pair, nudge its trigger to
+  // current price. Kraken fires it as a market order immediately — one API call
+  // instead of cancel+market, and no racing with the stop.
+  const currentPrice = state.ticker[pair]?.price;
+  const activeStop = existingOrders.find(([id, o]) =>
+    o.descr?.type === 'sell' && (o.descr?.ordertype || '').startsWith('stop')
+  );
+  if (activeStop && currentPrice > 0) {
+    const [stopId] = activeStop;
+    log(`[SELL-UI] Nudging stop ${stopId} for ${asset} to current price ${currentPrice}`);
+    const edit = await kraken.editOrder(stopId, pair, currentPrice);
+    if (edit.success) {
+      await new Promise(r => setTimeout(r, 2000));
+      await kraken.fetchNewTrades();
+      await kraken.fetchBalance();
+      await kraken.fetchOrders();
+      broadcast('state', getFullState());
+      return { success: true, asset, message: `Triggered stop for ${position.displayName}` };
+    }
+    log(`[SELL-UI] Stop nudge failed (${edit.error}), falling back to cancel+market`);
+  }
+
+  // Fallback: cancel everything, then market sell
   for (const [orderId] of existingOrders) {
     log(`[SELL-UI] Cancelling existing order ${orderId} for ${asset}`);
     await kraken.cancelOrder(orderId);
