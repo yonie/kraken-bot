@@ -193,6 +193,7 @@
       color: var(--text2);
       line-height: 1.6;
       margin-bottom: 12px;
+      font-size: 0.85rem;
     }
     
     .commands {
@@ -575,7 +576,7 @@
     </div>
     
     <div class="grid" id="cardGrid">
-      <!-- AI Analysis -->
+      <!-- AI Decision -->
       <div class="card" data-card-id="analysis" draggable="true">
         <div class="card-header">
           <h2><span class="drag-handle">&#9776;</span>AI Decision</h2>
@@ -589,17 +590,6 @@
         </div>
         <div id="analysisContent" class="card-content">
 <p class="analysis-text">No decision yet. Click "Run Analysis" to start.</p>
-        </div>
-      </div>
-      
-      <!-- Strategy -->
-      <div class="card" data-card-id="strategy" draggable="true">
-        <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Strategy</h2>
-          <button onclick="showStrategyEdit()" class="small" id="editStrategyBtn">Edit</button>
-        </div>
-        <div class="card-content" id="strategyContent" style="max-height: 300px; overflow-y: auto;">
-          <div class="loading">Loading...</div>
         </div>
       </div>
       
@@ -638,6 +628,57 @@
         </div>
       </div>
       
+      <!-- Open Orders -->
+      <div class="card" data-card-id="orders" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Open Orders</h2>
+        </div>
+        <div class="card-content table-scroll">
+          <table>
+            <thead>
+              <tr><th>Type</th><th>Asset</th><th>Price</th><th>Cost</th><th>When</th></tr>
+            </thead>
+            <tbody id="ordersTable">
+              <tr><td colspan="4" class="loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- AI Executions (incl. rejected by guardrails) -->
+      <div class="card" data-card-id="aiExecutions" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>AI Executions</h2>
+        </div>
+        <div class="card-content table-scroll">
+          <table>
+            <thead>
+              <tr><th>Action</th><th>Asset</th><th>Result</th><th>Detail</th><th>When</th></tr>
+            </thead>
+            <tbody id="aiExecutionsTable">
+              <tr><td colspan="5" class="loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent Trades -->
+      <div class="card" data-card-id="trades" draggable="true">
+        <div class="card-header">
+          <h2><span class="drag-handle">&#9776;</span>Recent Trades</h2>
+        </div>
+        <div class="card-content table-scroll">
+          <table>
+            <thead>
+              <tr><th>Type</th><th>Pair</th><th>Cost</th><th>When</th></tr>
+            </thead>
+            <tbody id="tradesTable">
+              <tr><td colspan="4" class="loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
       <!-- Top Movers -->
       <div class="card" data-card-id="movers" draggable="true">
         <div class="card-header">
@@ -655,37 +696,14 @@
         </div>
       </div>
       
-      <!-- Open Orders -->
-      <div class="card" data-card-id="orders" draggable="true">
+      <!-- Strategy -->
+      <div class="card" data-card-id="strategy" draggable="true">
         <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Open Orders</h2>
+          <h2><span class="drag-handle">&#9776;</span>Strategy</h2>
+          <button onclick="showStrategyEdit()" class="small" id="editStrategyBtn">Edit</button>
         </div>
-        <div class="card-content table-scroll">
-          <table>
-            <thead>
-              <tr><th>Type</th><th>Pair</th><th>Cost</th><th>When</th></tr>
-            </thead>
-            <tbody id="ordersTable">
-              <tr><td colspan="4" class="loading">Loading...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      
-      <!-- Recent Trades -->
-      <div class="card" data-card-id="trades" draggable="true">
-        <div class="card-header">
-          <h2><span class="drag-handle">&#9776;</span>Recent Trades</h2>
-        </div>
-        <div class="card-content table-scroll">
-          <table>
-            <thead>
-              <tr><th>Type</th><th>Pair</th><th>Cost</th><th>When</th></tr>
-            </thead>
-            <tbody id="tradesTable">
-              <tr><td colspan="4" class="loading">Loading...</td></tr>
-            </tbody>
-          </table>
+        <div class="card-content" id="strategyContent" style="max-height: 300px; overflow-y: auto;">
+          <div class="loading">Loading...</div>
         </div>
       </div>
       
@@ -906,13 +924,16 @@
       updateLedgers(data.ledgers);
       
       // Positions table
-      updatePositions(data.positions);
+      updatePositions(data.positions, data.orders);
       
       // Orders table
       updateOrders(data.orders);
       
       // Trades table
       updateTrades(data.trades);
+
+      // AI executions (incl. rejected)
+      updateAIExecutions(data.aiExecutions);
       
       // Movers table
       updateMovers(data.ticker);
@@ -1055,26 +1076,53 @@
       }).join('');
     }
     
-    function updatePositions(positions) {
+    function updatePositions(positions, orders) {
       const tbody = document.getElementById('positionsTable');
       if (!positions || Object.keys(positions).length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="color: var(--text2)">No positions</td></tr>';
         return;
       }
 
+      // Index open sell orders by asset (prefer stop-loss if both exist)
+      const sellByAsset = {};
+      for (const o of Object.values(orders || {})) {
+        if (o.descr?.type !== 'sell') continue;
+        const a = o.asset;
+        if (!a) continue;
+        const ot = o.descr?.ordertype || 'limit';
+        const isStop = ot.startsWith('stop');
+        const existing = sellByAsset[a];
+        if (!existing || (isStop && !existing.isStop)) {
+          sellByAsset[a] = { ordertype: ot, isStop, price: parseFloat(o.descr?.price) };
+        }
+      }
+
       tbody.innerHTML = Object.entries(positions)
-        .sort((a, b) => b[1].currentValue - a[1].currentValue)
-        .map(([asset, p]) => `
-          <tr>
-            <td><span class="asset-link" onclick="showAssetDetails('${asset}', '${p.displayName}')">${p.displayName}</span></td>
-            <td>${p.currentValue.toFixed(2)} EUR</td>
-            <td class="${p.unrealizedPnL >= 0 ? 'positive' : 'negative'}">
-              ${p.unrealizedPnL >= 0 ? '+' : ''}${p.unrealizedPnL.toFixed(2)} (${p.unrealizedPct.toFixed(1)}%)
-            </td>
-            <td>${p.holdingDays}d</td>
-            <td><button class="small sell-btn" onclick="sellPosition('${asset}', '${p.displayName}', ${p.unrealizedPnL.toFixed(2)}, ${p.unrealizedPct.toFixed(1)})">Sell</button></td>
-          </tr>
-        `).join('');
+        .sort((a, b) => b[1].unrealizedPnL - a[1].unrealizedPnL)
+        .map(([asset, p]) => {
+          const sell = sellByAsset[asset];
+          let badge = '';
+          if (sell && p.avgCost > 0) {
+            const pctVsEntry = ((sell.price / p.avgCost) - 1) * 100;
+            const pctStr = (pctVsEntry >= 0 ? '+' : '') + pctVsEntry.toFixed(1) + '%';
+            const priceStr = sell.price < 1 ? sell.price.toFixed(4) : sell.price.toFixed(2);
+            const icon = sell.isStop ? '🛡' : '🎯';
+            const color = sell.isStop ? '#e8a33d' : 'var(--text2)';
+            const title = (sell.isStop ? 'Stop-loss' : 'Limit sell') + ` @ ${priceStr} (${pctStr} vs entry)`;
+            badge = ` <span title="${title}" style="color: ${color}; font-size: 0.85em; margin-left: 6px; white-space: nowrap">${icon} ${pctStr}</span>`;
+          }
+          return `
+            <tr>
+              <td><span class="asset-link" onclick="showAssetDetails('${asset}', '${p.displayName}')">${p.displayName}</span></td>
+              <td>${p.currentValue.toFixed(2)} EUR</td>
+              <td class="${p.unrealizedPnL >= 0 ? 'positive' : 'negative'}">
+                ${p.unrealizedPnL >= 0 ? '+' : ''}${p.unrealizedPnL.toFixed(2)} (${p.unrealizedPct.toFixed(1)}%)${badge}
+              </td>
+              <td>${p.holdingDays}d</td>
+              <td><button class="small sell-btn" onclick="sellPosition('${asset}', '${p.displayName}', ${p.unrealizedPnL.toFixed(2)}, ${p.unrealizedPct.toFixed(1)})">Sell</button></td>
+            </tr>
+          `;
+        }).join('');
     }
 
     let pendingSellAsset = null;
@@ -1148,22 +1196,28 @@
       const orderList = Object.entries(orders || {});
       
       if (orderList.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="color: var(--text2)">No open orders</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="color: var(--text2)">No open orders</td></tr>';
         return;
       }
-      
+
       tbody.innerHTML = orderList.map(([id, o]) => {
-        const cost = parseFloat(o.descr?.price) * parseFloat(o.vol);
+        const price = parseFloat(o.descr?.price);
+        const cost = price * parseFloat(o.vol);
         const d = new Date(o.opentm * 1000);
         const diffMs = Date.now() - d.getTime();
         const diffMins = Math.floor(diffMs / 60000);
         const diffHours = Math.floor(diffMs / 3600000);
         const diffDays = Math.floor(diffMs / 86400000);
         const timeAgo = diffDays > 0 ? `${diffDays}d ago` : diffHours > 0 ? `${diffHours}h ago` : `${diffMins}m ago`;
+        const ordertype = o.descr?.ordertype || 'limit';
+        const isStop = ordertype.startsWith('stop');
+        const typeLabel = (o.descr?.type || '').toUpperCase() + (isStop ? ' STOP' : ordertype === 'limit' ? '' : ' ' + ordertype.toUpperCase());
+        const priceStr = price < 1 ? price.toFixed(6) : price.toFixed(2);
         return `
           <tr>
-            <td class="${o.descr?.type === 'buy' ? 'positive' : 'negative'}">${o.descr?.type?.toUpperCase()}</td>
+            <td class="${o.descr?.type === 'buy' ? 'positive' : 'negative'}">${typeLabel}</td>
             <td><span class="asset-link" onclick="showAssetDetails('${o.asset}', '${o.displayName}')">${o.displayName}</span></td>
+            <td>${priceStr}</td>
             <td>${cost.toFixed(2)}</td>
             <td>${timeAgo}</td>
           </tr>
@@ -1171,6 +1225,40 @@
       }).join('');
     }
     
+    function updateAIExecutions(execs) {
+      const tbody = document.getElementById('aiExecutionsTable');
+      if (!tbody) return;
+      if (!execs || execs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="color: var(--text2)">No AI executions yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = execs.map(e => {
+        const d = new Date(e.timestamp);
+        const diffMs = Date.now() - d.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        const timeAgo = diffDays > 0 ? `${diffDays}d ago` : diffHours > 0 ? `${diffHours}h ago` : diffMins > 0 ? `${diffMins}m ago` : 'just now';
+        const result = e.result || 'unknown';
+        const cls = result === 'success' ? 'positive' : result === 'rejected' || result === 'failed' ? 'negative' : '';
+        const detailParts = [];
+        if (e.amountEur) detailParts.push(`€${e.amountEur}`);
+        if (e.price) detailParts.push(`@ ${e.price}`);
+        if (e.error) detailParts.push(e.error);
+        const detail = detailParts.join(' — ');
+        const detailEsc = detail.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        return `
+          <tr>
+            <td>${e.action || ''}</td>
+            <td>${e.asset || ''}</td>
+            <td class="${cls}">${result}</td>
+            <td style="font-size: 0.85em; color: var(--text2);" title="${detailEsc}">${detailEsc}</td>
+            <td>${timeAgo}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
     function updateTrades(trades) {
       const tbody = document.getElementById('tradesTable');
       if (!trades || trades.length === 0) {
