@@ -26,6 +26,10 @@ const config = {
   llmModel: process.env.LLM_MODEL || 'qwen3.5:cloud',
   ollamaHost: process.env.OLLAMA_HOST || 'localhost',
   ollamaPort: parseInt(process.env.OLLAMA_PORT) || 11434,
+  llmFallbackProvider: process.env.LLM_FALLBACK_PROVIDER || null,
+  llmFallbackModel: process.env.LLM_FALLBACK_MODEL || null,
+  llmFallbackHost: process.env.LLM_FALLBACK_HOST || null,
+  llmFallbackPort: parseInt(process.env.LLM_FALLBACK_PORT) || null,
   port: process.env.PORT || 8000,
   aiEnabled: process.env.AI_ENABLED !== 'false',
   analysisIntervalMinutes: parseFloat(process.env.ANALYSIS_INTERVAL_MINUTES) || 10,
@@ -79,13 +83,21 @@ async function init() {
   // Initialize AI module
   if (canUseAI) {
     const apiKey = resolvedProvider === 'opencode' ? config.opencodeKey : config.openrouterKey;
+    const fallback = config.llmFallbackProvider && config.llmFallbackModel ? {
+      provider: config.llmFallbackProvider,
+      model: config.llmFallbackModel,
+      apiKey: config.openrouterKey,
+      ollamaHost: config.llmFallbackHost || 'localhost',
+      ollamaPort: config.llmFallbackPort || 11434,
+    } : null;
     ai.init({
       provider: resolvedProvider,
       apiKey,
       model: resolvedModel,
       ollamaHost: config.ollamaHost,
       ollamaPort: config.ollamaPort,
-      opencodePath: resolvedOpencodePath
+      opencodePath: resolvedOpencodePath,
+      fallback,
     });
     ai.setEnabled(config.aiEnabled);
     ai.setInterval(config.analysisIntervalMinutes);
