@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { state, log, saveLLMAnalysis, saveLLMHistory, saveAIExecutions, saveInsights, DATA_DIR } = require('../state');
 const kraken = require('../kraken');
-const { callLLM, setConfig, getConfig } = require('./llm');
+const { callLLM, setConfig, getConfig, getLastCallMeta } = require('./llm');
 const { buildContext } = require('./context');
 const { parseCommands, executeCommands } = require('./commands');
 
@@ -62,8 +62,9 @@ function init(options = {}) {
     config.ollamaPort = options.ollamaPort || config.ollamaPort;
     config.opencodePath = options.opencodePath || config.opencodePath;
     config.timeout = options.timeout || config.timeout;
+    config.fallback = options.fallback || null;
   }
-  
+
   setConfig({
     provider: config.provider,
     apiKey: config.apiKey,
@@ -71,10 +72,12 @@ function init(options = {}) {
     ollamaHost: config.ollamaHost,
     ollamaPort: config.ollamaPort,
     opencodePath: config.opencodePath,
-    timeout: config.timeout
+    timeout: config.timeout,
+    fallback: config.fallback,
   });
-  
-  log(`[AI] Initialized with provider: ${config.provider}, model: ${config.model}, timeout: ${(config.timeout/1000).toFixed(0)}s`);
+
+  const fbDesc = config.fallback ? `, fallback: ${config.fallback.provider}/${config.fallback.model}` : '';
+  log(`[AI] Initialized with provider: ${config.provider}, model: ${config.model}, timeout: ${(config.timeout/1000).toFixed(0)}s${fbDesc}`);
 }
 
 async function runAnalysis(force = false) {
@@ -103,14 +106,35 @@ async function runAnalysis(force = false) {
   try {
     fs.writeFileSync(path.join(DATA_DIR, 'llm_prompt_latest.txt'), prompt, 'utf8');
   } catch (e) {}
-  
+
+  const logStart = Date.now();
+  let response = null;
+  let callError = null;
   try {
-    const response = await callLLM(prompt);
-    
+    response = await callLLM(prompt);
+  } catch (e) {
+    callError = e;
+  }
+
+  // Always log this call (success or failure) to the append-only mining log.
+  appendCallLog({
+    started: logStart,
+    prompt,
+    response,
+    error: callError ? callError.message : null,
+    meta: getLastCallMeta(),
+  });
+
+  if (callError) {
+    console.error('[AI] Analysis failed:', callError.message);
+    return { success: false, error: callError.message };
+  }
+
+  try {
     if (!response) {
       return { success: false, reason: 'empty_response' };
     }
-    
+
     const parsed = parseResponse(response);
     
     state.llmAnalysis = {
@@ -199,23 +223,27 @@ function buildPrompt(ctx) {
   const newsCrypto = ctx.news.crypto?.items?.slice(0, 5).map(item => item.title) || [];
   const newsKraken = ctx.news.kraken?.items?.slice(0, 3).map(item => item.title) || [];
   
-  const formatCandidate = (m) => ({
-    asset: kraken.getAssetFromPair(m.pair),
-    price: m.price,
-    change_24h_pct: m.change24hPct,
-    change_7d_pct: m.change7dPct ?? null,
-    low_24h: m.low24,
-    high_24h: m.high24,
-    range_24h_pct: m.range24hPct,
-    volume_eur: m.volumeEur,
-    ohlc_7d: ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null,
-    last_sell_price: m.lastSellPrice ?? null,
-    reentry_ceiling: m.reentryCeiling ?? null,
-  });
+  const formatCandidate = (m, opts = {}) => {
+    const ohlcFull = ctx.ohlcData && ctx.ohlcData[m.pair] ? ctx.ohlcData[m.pair].map(c => c.close) : null;
+    const out = {
+      asset: kraken.getAssetFromPair(m.pair),
+      price: m.price,
+      change_24h_pct: m.change24hPct,
+      change_7d_pct: m.change7dPct ?? null,
+      low_24h: m.low24,
+      high_24h: m.high24,
+      range_24h_pct: m.range24hPct,
+      volume_eur: m.volumeEur,
+    };
+    if (!opts.skipOhlc && ohlcFull) out.ohlc_7d = ohlcFull.slice(-10);
+    if (m.lastSellPrice != null) out.last_sell_price = m.lastSellPrice;
+    if (m.reentryCeiling != null) out.reentry_ceiling = m.reentryCeiling;
+    return out;
+  };
 
-  const topByVolumeFormatted = ctx.topByVolume.slice(0, 30).map(formatCandidate);
-  const moversFormatted = ctx.movers.slice(0, 20).map(formatCandidate);
-  const losersFormatted = (ctx.losers || []).slice(0, 20).map(formatCandidate);
+  const topByVolumeFormatted = ctx.topByVolume.slice(0, 10).map(m => formatCandidate(m, { skipOhlc: true }));
+  const moversFormatted = ctx.movers.slice(0, 20).map(m => formatCandidate(m));
+  const losersFormatted = (ctx.losers || []).slice(0, 20).map(m => formatCandidate(m));
   
   const recentTradesFormatted = ctx.recentTrades.slice(0, 10).map(t => ({
     time: t.time,
@@ -225,7 +253,7 @@ function buildPrompt(ctx) {
     price: parseFloat(t.price),
     eur: parseFloat(t.cost)
   }));
-  
+
   const depositsFormatted = (ctx.recentLedgers || []).map(l => ({
     time: l.timestamp,
     type: l.type,
@@ -236,11 +264,11 @@ function buildPrompt(ctx) {
 
   const totalDeposits = depositsFormatted.filter(d => d.type === 'deposit').reduce((sum, d) => sum + d.amount, 0);
   const totalWithdrawals = depositsFormatted.filter(d => d.type === 'withdrawal').reduce((sum, d) => sum + d.amount, 0);
-  const netChangeEUR = ctx.balanceHistory[0] && ctx.balanceHistory[ctx.balanceHistory.length - 1] 
-    ? parseFloat(ctx.balanceHistory[ctx.balanceHistory.length - 1].eur) - parseFloat(ctx.balanceHistory[0].eur) 
+  const netChangeEUR = ctx.balanceHistory[0] && ctx.balanceHistory[ctx.balanceHistory.length - 1]
+    ? parseFloat(ctx.balanceHistory[ctx.balanceHistory.length - 1].eur) - parseFloat(ctx.balanceHistory[0].eur)
     : null;
   const tradingPnL = netChangeEUR !== null ? netChangeEUR - totalDeposits + totalWithdrawals : null;
-  
+
   const executionResultsFormatted = ctx.recentExecutionResults.map(e => ({
     time: e.time,
     action: e.action,
@@ -248,85 +276,50 @@ function buildPrompt(ctx) {
     error: e.error
   }));
   
-  const positionsFormatted = ctx.positions.map(p => {
-    if (p.isCash) {
-      return { asset: 'EUR', amount: parseFloat(p.amount), value_eur: parseFloat(p.value) };
-    }
-    const t = p.ticker || {};
-    return {
-      asset: p.asset,
-      amount: p.amount,
-      value_eur: parseFloat(p.value),
-      unrealized_pnl_eur: parseFloat(p.pnl),
-      unrealized_pnl_pct: parseFloat(p.pnlPct.replace('%', '')),
-      holding_days: p.days,
-      entry_price: parseFloat(p.avgEntry),
-      current_price: t.price,
-      bid: t.bid,
-      ask: t.ask,
-      spread_pct: t.spreadPct,
-      low_24h: t.low24,
-      high_24h: t.high24,
-      dist_from_low_pct: t.distFromLow,
-      range_24h_pct: t.range24hPct,
-      vwap: t.vwap,
-      volume_eur: t.volumeEur,
-      ohlc_7d: p.ohlc ? p.ohlc.map(c => parseFloat(c)) : null,
-      depth: p.depth ? {
-        bid_depth_5pct: p.depth.bidDepth5pct,
-        ask_depth_5pct: p.depth.askDepth5pct,
-        bid_walls: p.depth.bidWalls,
-        ask_walls: p.depth.askWalls
-      } : null
-    };
-  });
+  const positionsFormatted = ctx.positions
+    .filter(p => !p.isCash)
+    .map(p => {
+      const t = p.ticker || {};
+      return {
+        asset: p.asset,
+        amount: p.amount,
+        value_eur: parseFloat(p.value),
+        unrealized_pnl_eur: parseFloat(p.pnl),
+        unrealized_pnl_pct: parseFloat(p.pnlPct.replace('%', '')),
+        holding_days: p.days,
+        entry_price: parseFloat(p.avgEntry),
+        current_price: t.price,
+        change_24h_pct: t.change24hPct,
+        low_24h: t.low24,
+        high_24h: t.high24,
+        volume_eur: t.volumeEur,
+        ohlc_7d: p.ohlc ? p.ohlc.slice(-10).map(c => parseFloat(c)) : null,
+      };
+    });
   
   const loadedStrategy = loadStrategy();
   const strategyText = loadedStrategy || 'No strategy loaded';
   
   const jsonData = JSON.stringify({
-    time: {
-      utc: ctx.sessionInfo.utcTime,
-      session: ctx.sessionInfo.session,
-      is_weekend: ctx.sessionInfo.isWeekend
-    },
+    time_utc: ctx.sessionInfo.utcTime,
     market: {
-      global: {
-        market_cap_usd: ctx.globalMarket?.marketCap,
-        market_cap_change_24h_pct: ctx.globalMarket?.marketCapChange24h,
-        btc_dominance_pct: ctx.globalMarket?.btcDominance,
-        eth_dominance_pct: ctx.globalMarket?.ethDominance,
-        volume_24h_usd: ctx.globalMarket?.volume24h
-      },
+      btc_dominance_pct: ctx.globalMarket?.btcDominance,
       fear_greed_index: ctx.greedIndex,
       fear_greed_index_description: "0-25: Extreme Fear, 26-45: Fear, 46-55: Neutral, 56-75: Greed, 76-100: Extreme Greed",
-      market_breadth: {
-        up: ctx.marketBreadth.up,
-        down: ctx.marketBreadth.down,
-        total: ctx.marketBreadth.total
-      },
       btc: {
         price_eur: ctx.btcPrice,
         change_24h_pct: state.ticker['XXBTZEUR']?.change24hPct,
         low_24h: state.ticker['XXBTZEUR']?.low24,
         high_24h: state.ticker['XXBTZEUR']?.high24,
-        range_24h_pct: state.ticker['XXBTZEUR']?.range24hPct,
-        ohlc_7d: ctx.btcOHLC?.slice(-7).map(c => c.close),
-        rsi_14: ctx.btcRSI ? Math.round(ctx.btcRSI) : null,
-        depth: ctx.btcDepth ? {
-          bid_depth_5pct_eur: ctx.btcDepth.bidDepth5pct,
-          ask_depth_5pct_eur: ctx.btcDepth.askDepth5pct,
-          bid_walls: ctx.btcDepth.bidWalls,
-          ask_walls: ctx.btcDepth.askWalls
-        } : null
+        ohlc_7d: ctx.btcOHLC?.slice(-10).map(c => c.close),
+        rsi_14: ctx.btcRSI ? Math.round(ctx.btcRSI) : null
       },
       eth: {
         price_eur: ctx.ethPrice,
         change_24h_pct: state.ticker['XETHZEUR']?.change24hPct,
         low_24h: state.ticker['XETHZEUR']?.low24,
         high_24h: state.ticker['XETHZEUR']?.high24,
-        range_24h_pct: state.ticker['XETHZEUR']?.range24hPct,
-        ohlc_7d: ctx.ethOHLC?.map(c => c.close)
+        ohlc_7d: ctx.ethOHLC?.slice(-10).map(c => c.close)
       }
     },
     news: {
@@ -340,26 +333,6 @@ function buildPrompt(ctx) {
       invested_eur: parseFloat(ctx.investedValue),
       cash_pct: parseFloat(ctx.cashPct),
       unrealized_pnl_eur: parseFloat(ctx.unrealizedPnL)
-    },
-    performance_7d: {
-      portfolio_start_eur: ctx.balanceHistory[0] ? parseFloat(ctx.balanceHistory[0].eur) : null,
-      portfolio_end_eur: ctx.balanceHistory[ctx.balanceHistory.length - 1] ? parseFloat(ctx.balanceHistory[ctx.balanceHistory.length - 1].eur) : null,
-      net_change_eur: netChangeEUR,
-      deposits_eur: totalDeposits,
-      withdrawals_eur: totalWithdrawals,
-      trading_pnl_eur: tradingPnL,
-      btc_change_pct: parseFloat(ctx.btcPriceChange),
-      comparison: tradingPnL !== null && ctx.btcPriceChange ? {
-        your_performance_pct: ctx.balanceHistory[0] && ctx.balanceHistory[0].eur > 0 
-          ? ((tradingPnL / parseFloat(ctx.balanceHistory[0].eur)) * 100).toFixed(2)
-          : null,
-        btc_performance_pct: ctx.btcPriceChange,
-        outperformance_pct: ctx.balanceHistory[0] && ctx.balanceHistory[0].eur > 0
-          ? (((tradingPnL / parseFloat(ctx.balanceHistory[0].eur)) * 100) - parseFloat(ctx.btcPriceChange)).toFixed(2)
-          : null,
-        note: "A positive outperformance means you beat BTC. Use trading_pnl_eur for comparison, NOT net_change_eur (which includes deposits)."
-      } : null,
-      history_eur: ctx.balanceHistory.map(h => parseFloat(h.eur))
     },
     positions: positionsFormatted,
     open_orders: ctx.openOrders.map(o => ({
@@ -375,6 +348,14 @@ function buildPrompt(ctx) {
     top_losers_24h: losersFormatted,
     recent_trades_7d: recentTradesFormatted,
     deposits_withdrawals_7d: depositsFormatted,
+    performance_7d: {
+      net_change_eur: netChangeEUR,
+      deposits_eur: totalDeposits,
+      withdrawals_eur: totalWithdrawals,
+      trading_pnl_eur: tradingPnL,
+      btc_change_pct: parseFloat(ctx.btcPriceChange),
+      note: "trading_pnl_eur = net_change_eur - deposits + withdrawals. Compare this (not net_change) to btc_change_pct."
+    },
     execution_results: executionResultsFormatted
   }, null, 2);
   
@@ -444,6 +425,29 @@ async function initContext() {
     log('[AI] Initial context loaded');
   } catch (e) {
     console.error('[AI] Failed to load initial context:', e.message);
+  }
+}
+
+function appendCallLog(entry) {
+  try {
+    const file = path.join(DATA_DIR, 'llm_log.jsonl');
+    const parsed = entry.response ? parseResponse(entry.response) : null;
+    const record = {
+      t: new Date(entry.started).toISOString(),
+      wall_ms: Date.now() - entry.started,
+      meta: entry.meta || null,
+      error: entry.error || null,
+      prompt_chars: entry.prompt ? entry.prompt.length : 0,
+      response_chars: entry.response ? entry.response.length : 0,
+      sentiment: parsed?.sentiment || null,
+      risk: parsed?.risk || null,
+      commands: parsed?.commands || null,
+      prompt: entry.prompt,
+      response: entry.response,
+    };
+    fs.appendFileSync(file, JSON.stringify(record) + '\n');
+  } catch (e) {
+    console.error('[AI] appendCallLog failed:', e.message);
   }
 }
 

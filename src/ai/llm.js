@@ -14,7 +14,8 @@ let config = {
   ollamaHost: 'localhost',
   ollamaPort: 11434,
   opencodePath: '/zen/v1',
-  timeout: 180000
+  timeout: 180000,
+  fallback: null, // optional { provider, model, apiKey, ollamaHost, ollamaPort, timeout }
 };
 
 function setConfig(options) {
@@ -29,7 +30,42 @@ function setConfig(options) {
     config.ollamaPort = options.ollamaPort || config.ollamaPort;
     config.opencodePath = options.opencodePath || config.opencodePath;
     config.timeout = options.timeout || config.timeout;
+    if ('fallback' in options) config.fallback = options.fallback;
   }
+}
+
+function buildActiveConfig(overrides) {
+  return {
+    provider: overrides.provider || config.provider,
+    apiKey: overrides.apiKey || config.apiKey,
+    model: overrides.model || config.model,
+    ollamaHost: overrides.ollamaHost || config.ollamaHost,
+    ollamaPort: overrides.ollamaPort || config.ollamaPort,
+    timeout: overrides.timeout || config.timeout,
+  };
+}
+
+const MODEL_DEFAULTS = [
+  {
+    match: /^qwen3\.6:/,
+    options: {
+      temperature: 0.7,
+      top_p: 0.80,
+      top_k: 20,
+      presence_penalty: 1.5,
+      num_ctx: 65536,
+      num_predict: 3000,
+    },
+    think: false,
+    keep_alive: '15m',
+  },
+];
+
+function getModelDefaults(model) {
+  for (const d of MODEL_DEFAULTS) {
+    if (d.match.test(model)) return d;
+  }
+  return null;
 }
 
 function getConfig() {
@@ -46,55 +82,83 @@ function sanitizeResponse(text) {
     .replace(/[\u20AC]/g, 'EUR');
 }
 
+let lastCallMeta = null;
+function getLastCallMeta() { return lastCallMeta; }
+
 async function callLLM(prompt) {
-  if (config.provider === 'ollama') {
-    return callOllamaWithRetry(prompt);
+  lastCallMeta = null;
+  const primary = buildActiveConfig({});
+  try {
+    const result = await callWithConfig(prompt, primary);
+    if (lastCallMeta) lastCallMeta.leg = 'primary';
+    return result;
+  } catch (primaryError) {
+    if (!config.fallback) throw primaryError;
+    const fb = buildActiveConfig(config.fallback);
+    console.warn(`[AI] Primary (${primary.provider}/${primary.model}) failed: ${primaryError.message} — falling back to ${fb.provider}/${fb.model}`);
+    try {
+      const result = await callWithConfig(prompt, fb);
+      if (lastCallMeta) lastCallMeta.leg = 'fallback';
+      return result;
+    } catch (fallbackError) {
+      console.error(`[AI] Fallback (${fb.provider}/${fb.model}) also failed: ${fallbackError.message}`);
+      throw fallbackError;
+    }
   }
-  if (config.provider === 'opencode') {
-    return callOpenCode(prompt);
-  }
-  return callOpenRouter(prompt);
 }
 
-async function callOllamaWithRetry(prompt, maxRetries = 2) {
+async function callWithConfig(prompt, cfg) {
+  if (cfg.provider === 'ollama') {
+    return callOllamaWithRetry(prompt, cfg);
+  }
+  if (cfg.provider === 'opencode') {
+    return callOpenCode(prompt, cfg);
+  }
+  return callOpenRouter(prompt, cfg);
+}
+
+async function callOllamaWithRetry(prompt, cfg, maxRetries = 2) {
   let lastError;
-  
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const currentTimeout = config.timeout * (attempt + 1);
-    
+    const currentTimeout = cfg.timeout * (attempt + 1);
     try {
-      const result = await callOllama(prompt, currentTimeout);
-      return result;
+      return await callOllama(prompt, currentTimeout, cfg);
     } catch (e) {
       lastError = e;
       if (attempt === maxRetries) break;
-      
       const backoff = Math.pow(2, attempt) * 1000;
       console.log(`[AI] Retry ${attempt + 1}/${maxRetries} in ${backoff}ms: ${e.message}`);
       await new Promise(r => setTimeout(r, backoff));
     }
   }
-  
   throw lastError;
 }
 
-async function callOllama(prompt, timeoutMs) {
+async function callOllama(prompt, timeoutMs, cfg) {
+  cfg = cfg || buildActiveConfig({});
   const startTime = Date.now();
-  const timeout = timeoutMs || config.timeout;
-  
+  const timeout = timeoutMs || cfg.timeout;
+  const defaults = getModelDefaults(cfg.model);
+
   return new Promise((resolve, reject) => {
-    const postData = JSON.stringify({
-      model: config.model,
+    const payload = {
+      model: cfg.model,
       prompt: prompt,
-      stream: false
-    });
+      stream: false,
+    };
+    if (defaults) {
+      payload.options = defaults.options;
+      if (typeof defaults.think === 'boolean') payload.think = defaults.think;
+      if (defaults.keep_alive) payload.keep_alive = defaults.keep_alive;
+    }
+    const postData = JSON.stringify(payload);
 
     const promptSize = Buffer.byteLength(postData, 'utf8');
-    console.log(`[AI] Request: model=${config.model}, size=${(promptSize / 1024).toFixed(1)}KB, timeout=${(timeout/1000).toFixed(0)}s`);
+    console.log(`[AI] Request: model=${cfg.model}, size=${(promptSize / 1024).toFixed(1)}KB, timeout=${(timeout/1000).toFixed(0)}s`);
 
     const req = http.request({
-      hostname: config.ollamaHost,
-      port: config.ollamaPort,
+      hostname: cfg.ollamaHost,
+      port: cfg.ollamaPort,
       path: '/api/generate',
       method: 'POST',
       headers: {
@@ -115,6 +179,11 @@ async function callOllama(prompt, timeoutMs) {
             const tokensIn = parsed.prompt_eval_count || 0;
             const tokensOut = parsed.eval_count || 0;
             console.log(`[AI] Response: ${(duration/1000).toFixed(1)}s, tokens=${tokensOut} (prompt=${tokensIn}, gen=${tokensOut})`);
+            lastCallMeta = {
+              provider: 'ollama', model: cfg.model, host: cfg.ollamaHost, port: cfg.ollamaPort,
+              wall_ms: duration, prompt_tokens: tokensIn, eval_tokens: tokensOut,
+              done_reason: parsed.done_reason || null,
+            };
             resolve(sanitizeResponse(parsed.response));
           }
         } catch (e) {
@@ -141,25 +210,26 @@ async function callOllama(prompt, timeoutMs) {
   });
 }
 
-async function callOpenRouter(prompt) {
-  if (!config.apiKey) {
+async function callOpenRouter(prompt, cfg) {
+  cfg = cfg || buildActiveConfig({});
+  if (!cfg.apiKey) {
     console.error('[AI] No API key configured');
     return null;
   }
-  
+
   const startTime = Date.now();
-  const timeout = config.timeout || 60000;
-  
+  const timeout = cfg.timeout || 60000;
+
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
-      model: config.model,
+      model: cfg.model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
       max_tokens: 600
     });
-    
+
     const promptSize = Buffer.byteLength(postData, 'utf8');
-    console.log(`[AI] OpenRouter request: model=${config.model}, size=${(promptSize / 1024).toFixed(1)}KB`);
+    console.log(`[AI] OpenRouter request: model=${cfg.model}, size=${(promptSize / 1024).toFixed(1)}KB`);
 
     const req = https.request({
       hostname: 'openrouter.ai',
@@ -168,7 +238,7 @@ async function callOpenRouter(prompt) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
+        'Authorization': `Bearer ${cfg.apiKey}`,
         'HTTP-Referer': 'https://kraken-bot.local',
         'X-Title': 'Kraken Trading Bot'
       },
@@ -185,6 +255,11 @@ async function callOpenRouter(prompt) {
           } else {
             const duration = Date.now() - startTime;
             console.log(`[AI] OpenRouter response: ${(duration/1000).toFixed(1)}s`);
+            lastCallMeta = {
+              provider: 'openrouter', model: cfg.model, host: 'openrouter.ai', port: 443,
+              wall_ms: duration, prompt_tokens: parsed.usage?.prompt_tokens || null,
+              eval_tokens: parsed.usage?.completion_tokens || null, done_reason: null,
+            };
             resolve(sanitizeResponse(parsed.choices?.[0]?.message?.content));
           }
         } catch (e) {
@@ -292,5 +367,6 @@ module.exports = {
   callLLM,
   callOllama,
   callOpenRouter,
-  callOpenCode
+  callOpenCode,
+  getLastCallMeta,
 };
