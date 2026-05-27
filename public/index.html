@@ -1950,11 +1950,11 @@
         `;
       }
       
-      // Recent Trades - limited to 5
+      // All known trades for this asset
       if (data.recentTrades && data.recentTrades.length > 0) {
         html += `
           <div class="modal-section">
-            <h3>Recent Trades (Last 7 Days)</h3>
+            <h3>Trade History (${data.recentTrades.length})</h3>
             <div class="table-scroll" style="max-height: 300px;">
               <table>
                 <thead><tr><th>Type</th><th>Price</th><th>Cost</th><th>Date</th></tr></thead>

@@ -413,17 +413,12 @@ function getAssetDetails(assetName) {
     completedTradesCount: assetActivity.length
   } : null;
   
-  // Get recent trades for this asset (both buys and sells)
-  // Get all trades for this specific asset from last 7 days
-  const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
+  // Get all known trades for this asset (both buys and sells)
   const assetTrades = Object.entries(state.fullTradeHistory.trades)
     .filter(([id, trade]) => {
       const tradePair = trade.pair;
       const tradeAsset = kraken.getAssetFromPair(tradePair);
-      const tradeTime = trade.time > 1e12 ? trade.time / 1000 : trade.time;
-      return (tradeAsset === normalizedAsset || 
-             tradePair === pair) &&
-             tradeTime >= sevenDaysAgo;
+      return tradeAsset === normalizedAsset || tradePair === pair;
     })
     .map(([id, trade]) => ({
       id,
@@ -511,7 +506,7 @@ function getAssetDetails(assetName) {
       totalTrades: assetTrades.length
     },
     
-    // Recent activity (all trades from last 7 days)
+    // All known trades for this asset
     recentTrades: assetTrades,
     openOrders,
     closedPnL
