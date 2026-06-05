@@ -111,8 +111,18 @@ function findPairForAsset(assetName) {
 function getAssetFromPair(pair) {
   const internalPair = toInternalPair(pair);
   const info = state.pairs?.[internalPair];
-  
-  return info?.base || pair;
+  if (info?.base) return info.base;
+
+  // Pair not in our EUR-only map (e.g. a historical USD trade like XXBTZUSD).
+  // Derive the base by matching against known asset bases, longest first, so
+  // these trades still net against EUR holdings in the P&L FIFO calc.
+  if (state.assetToPairMap) {
+    const bases = Object.keys(state.assetToPairMap).sort((a, b) => b.length - a.length);
+    for (const base of bases) {
+      if (pair.startsWith(base)) return base;
+    }
+  }
+  return pair;
 }
 
 async function fetchPairs() {
