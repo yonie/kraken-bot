@@ -178,7 +178,7 @@ async function identifyAndRemoveInvalidPairs() {
       });
     }
     
-    testNextPair().then(resolve);
+    testNextPair();
   }
   
   log('[KRAKEN] Starting conservative pair validation to avoid rate limits...');
