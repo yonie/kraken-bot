@@ -22,7 +22,7 @@ An AI-powered cryptocurrency trading bot for [Kraken](https://www.kraken.com) ex
 - Node.js 18+
 - Kraken account with API key (trading permissions enabled)
 - EUR balance in your Kraken account
-- OpenRouter API key
+- One of: OpenRouter API key, OpenCode Zen API key, or local Ollama instance
 
 ## Quick Start
 
@@ -42,7 +42,9 @@ An AI-powered cryptocurrency trading bot for [Kraken](https://www.kraken.com) ex
    ```env
    KRAKEN_KEY=your-kraken-api-key
    KRAKEN_PASSCODE=your-kraken-secret
-   OPENROUTER_API_KEY=sk-or-v1-your-key
+   LLM_PROVIDER=opencode           # ollama | openrouter | opencode
+   OPENCODE_API_KEY=oc-your-key    # or OPENROUTER_API_KEY for openrouter
+   LLM_MODEL=big-pickle            # opencode model id (free during preview)
    ```
 
 3. Start the bot:
@@ -58,11 +60,15 @@ An AI-powered cryptocurrency trading bot for [Kraken](https://www.kraken.com) ex
 |----------|---------|-------------|
 | `KRAKEN_KEY` | required | Your Kraken API key |
 | `KRAKEN_PASSCODE` | required | Your Kraken API secret |
-| `OPENROUTER_API_KEY` | required | OpenRouter API key for AI |
-| `LLM_MODEL` | `x-ai/grok-3-mini-beta` | LLM model to use |
+| `LLM_PROVIDER` | `ollama` | LLM provider: `ollama`, `openrouter`, or `opencode` |
+| `OPENROUTER_API_KEY` | - | OpenRouter API key (when provider=openrouter) |
+| `OPENCODE_API_KEY` | - | OpenCode Zen API key (when provider=opencode) |
+| `LLM_MODEL` | `qwen3.5:cloud` | LLM model — prefix `opencode/` for Zen, `opencode-go/` for Go |
 | `PORT` | `8000` | Dashboard port |
 | `AI_ENABLED` | `true` | Enable/disable AI trading |
 | `ANALYSIS_INTERVAL_MINUTES` | `30` | How often AI analyzes |
+
+> **Privacy Note:** This bot sends your full portfolio, balances, and trade history to the configured LLM provider. OpenCode Zen's free/preview models are logged and may be used for service improvement per their terms. Use a paid model or a local Ollama instance if you don't want your financial data retained.
 
 ## Project Structure
 

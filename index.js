@@ -21,6 +21,7 @@ const config = {
   krakenSecret: process.env.KRAKEN_PASSCODE,
   llmProvider: process.env.LLM_PROVIDER || 'ollama',
   openrouterKey: process.env.OPENROUTER_API_KEY,
+  opencodeKey: process.env.OPENCODE_API_KEY,
   llmModel: process.env.LLM_MODEL || 'qwen3.5:cloud',
   ollamaHost: process.env.OLLAMA_HOST || 'localhost',
   ollamaPort: parseInt(process.env.OLLAMA_PORT) || 11434,
@@ -30,6 +31,19 @@ const config = {
   countryCode: process.env.COUNTRY_CODE || null
 };
 
+let resolvedProvider = config.llmProvider;
+let resolvedModel = config.llmModel;
+let resolvedOpencodePath = '/zen/v1';
+
+if (config.llmModel.startsWith('opencode/')) {
+  resolvedProvider = 'opencode';
+  resolvedModel = config.llmModel.slice('opencode/'.length);
+  resolvedOpencodePath = '/zen/v1';
+} else if (config.llmModel.startsWith('opencode-go/')) {
+  resolvedProvider = 'opencode';
+  resolvedModel = config.llmModel.slice('opencode-go/'.length);
+  resolvedOpencodePath = '/zen/go/v1';
+}
 // ============================================
 // VALIDATION
 // ============================================
@@ -39,7 +53,9 @@ if (!config.krakenKey || !config.krakenSecret) {
   process.exit(1);
 }
 
-const canUseAI = config.llmProvider === 'ollama' || config.openrouterKey;
+const canUseAI = resolvedProvider === 'ollama'
+  || (resolvedProvider === 'opencode' && config.opencodeKey)
+  || (resolvedProvider === 'openrouter' && config.openrouterKey);
 if (!canUseAI) {
   console.warn('WARNING: No LLM provider configured - AI analysis will be disabled');
 }
@@ -61,12 +77,14 @@ async function init() {
   
   // Initialize AI module
   if (canUseAI) {
+    const apiKey = resolvedProvider === 'opencode' ? config.opencodeKey : config.openrouterKey;
     ai.init({
-      provider: config.llmProvider,
-      apiKey: config.openrouterKey,
-      model: config.llmModel,
+      provider: resolvedProvider,
+      apiKey,
+      model: resolvedModel,
       ollamaHost: config.ollamaHost,
-      ollamaPort: config.ollamaPort
+      ollamaPort: config.ollamaPort,
+      opencodePath: resolvedOpencodePath
     });
     ai.setEnabled(config.aiEnabled);
     ai.setInterval(config.analysisIntervalMinutes);
