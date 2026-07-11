@@ -13,6 +13,7 @@ let config = {
   model: 'x-ai/grok-3-mini-beta',
   ollamaHost: 'localhost',
   ollamaPort: 11434,
+  opencodePath: '/zen/v1',
   timeout: 180000
 };
 
@@ -26,6 +27,7 @@ function setConfig(options) {
     config.model = options.model || config.model;
     config.ollamaHost = options.ollamaHost || config.ollamaHost;
     config.ollamaPort = options.ollamaPort || config.ollamaPort;
+    config.opencodePath = options.opencodePath || config.opencodePath;
     config.timeout = options.timeout || config.timeout;
   }
 }
@@ -47,6 +49,9 @@ function sanitizeResponse(text) {
 async function callLLM(prompt) {
   if (config.provider === 'ollama') {
     return callOllamaWithRetry(prompt);
+  }
+  if (config.provider === 'opencode') {
+    return callOpenCode(prompt);
   }
   return callOpenRouter(prompt);
 }
@@ -206,11 +211,86 @@ async function callOpenRouter(prompt) {
   });
 }
 
+async function callOpenCode(prompt) {
+  if (!config.apiKey) {
+    console.error('[AI] No OpenCode API key configured');
+    throw new Error('OpenCode API key not configured');
+  }
+  
+  const startTime = Date.now();
+  const timeout = config.timeout || 60000;
+  
+  return new Promise((resolve, reject) => {
+    const postData = JSON.stringify({
+      model: config.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      max_tokens: 16000
+    });
+    
+    const promptSize = Buffer.byteLength(postData, 'utf8');
+    console.log(`[AI] OpenCode request: model=${config.model}, size=${(promptSize / 1024).toFixed(1)}KB`);
+
+    const req = https.request({
+      hostname: 'opencode.ai',
+      port: 443,
+      path: `${config.opencodePath}/chat/completions`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`
+      },
+      timeout: timeout
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) {
+            console.error(`[AI] OpenCode error: ${parsed.error.message}`);
+            reject(new Error(parsed.error.message));
+          } else {
+            const duration = Date.now() - startTime;
+            const content = parsed.choices?.[0]?.message?.content;
+            const finishReason = parsed.choices?.[0]?.finish_reason;
+            console.log(`[AI] OpenCode response: ${(duration/1000).toFixed(1)}s, finish_reason=${finishReason}`);
+            if (!content) {
+              reject(new Error('OpenCode returned empty content (possibly truncated reasoning or refusal)'));
+              return;
+            }
+            resolve(sanitizeResponse(content));
+          }
+        } catch (e) {
+          console.error(`[AI] OpenCode parse error: ${e.message}`);
+          reject(new Error('Failed to parse OpenCode response'));
+        }
+      });
+    });
+
+    req.on('error', e => {
+      console.error(`[AI] OpenCode connection error: ${e.message}`);
+      reject(e);
+    });
+    
+    req.on('timeout', () => {
+      const duration = Date.now() - startTime;
+      console.error(`[AI] OpenCode timeout after ${(duration/1000).toFixed(1)}s`);
+      req.destroy();
+      reject(new Error('OpenCode timeout'));
+    });
+    
+    req.write(postData);
+    req.end();
+  });
+}
+
 module.exports = {
   setConfig,
   getConfig,
   sanitizeResponse,
   callLLM,
   callOllama,
-  callOpenRouter
+  callOpenRouter,
+  callOpenCode
 };
