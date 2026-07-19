@@ -165,6 +165,17 @@ async function executeCommands(actions) {
         }
         
       } else if (action.action === 'BUY') {
+        // GUARDRAIL: Don't take on positions smaller than 300 EUR
+        const MIN_POSITION_EUR = 300;
+        if (action.amountEur < MIN_POSITION_EUR) {
+          const reason = `buy_below_min_position: ${action.amountEur.toFixed(2)} EUR < min ${MIN_POSITION_EUR} EUR. Size up or skip this entry.`;
+          log(`[GUARDRAIL] BUY ${action.asset} blocked: ${reason}`);
+          state.aiExecutionHistory.executions.push({ timestamp: Date.now(), action: 'BUY', asset: action.asset, result: 'rejected', error: reason });
+          saveAIExecutions();
+          results.push({ ...action, success: false, error: reason });
+          continue;
+        }
+
         // Kraken wallet uses ZEUR for EUR
         const available = state.wallet['ZEUR']?.amount || state.wallet['EUR']?.amount || 0;
 
