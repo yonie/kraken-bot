@@ -86,9 +86,30 @@ function loadJSON(file, defaultValue = {}) {
   return defaultValue;
 }
 
+// Atomic write: write to a temp file, flush to disk, then rename over the
+// target. rename() is atomic, so a crash or full disk fails the temp write and
+// leaves the existing good file untouched — instead of truncating it to 0 bytes.
+function writeFileAtomic(file, data) {
+  const tmp = `${file}.tmp`;
+  try {
+    const fd = fs.openSync(tmp, 'w');
+    try {
+      fs.writeFileSync(fd, data, 'utf8');
+      fs.fsyncSync(fd); // ensure temp is fully on disk before we rename
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    // Clean up the partial temp so a full disk doesn't leak stale .tmp files.
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (_) {}
+    throw e;
+  }
+}
+
 function saveJSON(file, data) {
   try {
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+    writeFileAtomic(file, JSON.stringify(data, null, 2));
   } catch (e) {
     console.error(`Error saving ${file}:`, e.message);
   }
@@ -197,6 +218,7 @@ module.exports = {
   config,
   
   // Persistence
+  writeFileAtomic,
   loadAllState,
   saveTradeHistory,
   saveAnalytics,

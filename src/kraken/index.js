@@ -13,14 +13,17 @@ const orders = require('./orders');
 
 const { state } = require('../state');
 
-async function refreshAll() {
+async function refreshAll(opts = {}) {
   await market.fetchTicker();
   await market.fetchGreedIndex();
-  
+
   await balance.fetchBalance();
   await orders.fetchOrders();
-  await history.fetchNewTrades();
-  
+  // skipTrades: used at startup, where trade history is fetched separately in
+  // the background. On a cold/empty cache fetchNewTrades() backfills the entire
+  // history (rate-limited, minutes) and would otherwise block startup.
+  if (!opts.skipTrades) await history.fetchNewTrades();
+
   const lastLedgerFetch = state._lastLedgerFetch || 0;
   if (Date.now() - lastLedgerFetch > 30 * 60 * 1000) {
     await balance.fetchLedgers(7);
