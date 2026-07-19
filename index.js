@@ -109,18 +109,21 @@ async function init() {
   
   log('[INIT] Fetching asset display names...');
   await kraken.fetchAssetDisplayNames();
-  
+
+  // Start HTTP/WebSocket server before the slow data fetches so the dashboard
+  // is reachable immediately, even on a cold cache.
+  server.start();
+
+  // skipTrades: trade history is fetched in the background below; fetching it
+  // here too would block on a full backfill when the cache is empty.
   log('[INIT] Fetching market data...');
-  await kraken.refreshAll();
-  
+  await kraken.refreshAll({ skipTrades: true });
+
   // Fetch initial context (global market, news) for dashboard
   if (canUseAI) {
     await ai.initContext();
   }
-  
-  // Start HTTP/WebSocket server immediately
-  server.start();
-  
+
   // Fetch trade history in background (can take a while)
   log('[INIT] Fetching trade history (background)...');
   state._tradeHistoryReady = false;

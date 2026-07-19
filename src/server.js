@@ -8,7 +8,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
-const { state, log, DATA_DIR, config } = require('./state');
+const { state, log, DATA_DIR, config, writeFileAtomic } = require('./state');
 const kraken = require('./kraken');
 const ai = require('./ai');
 
@@ -279,7 +279,7 @@ function handleStrategyUpdate(data) {
   
   const userPath = path.join(DATA_DIR, 'strategy.md');
   try {
-    fs.writeFileSync(userPath, content, 'utf8');
+    writeFileAtomic(userPath, content);
     log('[SERVER] Strategy updated via web interface');
     return { success: true };
   } catch (e) {
