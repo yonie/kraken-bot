@@ -60,13 +60,41 @@ An AI-powered cryptocurrency trading bot for [Kraken](https://www.kraken.com) ex
 |----------|---------|-------------|
 | `KRAKEN_KEY` | required | Your Kraken API key |
 | `KRAKEN_PASSCODE` | required | Your Kraken API secret |
-| `LLM_PROVIDER` | `ollama` | LLM provider: `ollama`, `openrouter`, or `opencode` |
+| `LLM_PROVIDER` | `ollama` | LLM provider: `ollama`, `openrouter`, `opencode`, or `cli` |
 | `OPENROUTER_API_KEY` | - | OpenRouter API key (when provider=openrouter) |
 | `OPENCODE_API_KEY` | - | OpenCode Zen API key (when provider=opencode) |
-| `LLM_MODEL` | `qwen3.5:cloud` | LLM model — prefix `opencode/` for Zen, `opencode-go/` for Go |
+| `LLM_CLI` | - | Which local CLI to run when provider=`cli`: `claude`, `codex`, or `opencode` |
+| `LLM_CLI_BIN` | - | Optional override for the CLI executable path/name |
+| `LLM_MODEL` | `qwen3.5:cloud` | LLM model — prefix `opencode/` (Zen), `opencode-go/` (Go), or `cli/<name>` (local CLI) |
 | `PORT` | `8000` | Dashboard port |
 | `AI_ENABLED` | `true` | Enable/disable AI trading |
 | `ANALYSIS_INTERVAL_MINUTES` | `30` | How often AI analyzes |
+
+### Using a local coding CLI (no API key)
+
+If you already pay for **Claude** (Pro/Max), **ChatGPT** (Plus/Pro — Codex), or **opencode**, you can drive
+the bot straight from those CLIs' subscription logins — no separate API key or per-token billing. Install the
+CLI, log in once, then point the bot at it:
+
+```env
+LLM_PROVIDER=cli
+LLM_CLI=claude          # claude | codex | opencode
+# LLM_MODEL=            # optional — leave empty to use the CLI's own default model
+```
+
+| CLI | Install | Log in | Uses |
+|-----|---------|--------|------|
+| `claude` | `npm i -g @anthropic-ai/claude-code` | `claude login` | Claude Pro/Max |
+| `codex` | `npm i -g @openai/codex` | `codex login` | ChatGPT Plus/Pro |
+| `opencode` | `npm i -g opencode-ai` | `opencode auth login` | opencode account |
+
+The bot pipes the **same analysis prompt** used by the API providers to the CLI over stdin and reads its reply
+from stdout, so behaviour is identical — only the transport (and billing) changes. Shortcut form:
+`LLM_MODEL=cli/claude` (or `cli/opencode/glm-5-1`, `cli/codex/gpt-5.5-codex`) sets provider and CLI in one line.
+
+> **Heads-up:** CLI runs draw from the same usage window as your interactive Claude/Codex/opencode sessions and
+> are slower and less deterministic than a direct API call. This uses each vendor's officially supported
+> non-interactive mode (`claude -p`, `codex exec`, `opencode run`) — no tokens are scraped or reverse-engineered.
 
 > **Privacy Note:** This bot sends your full portfolio, balances, and trade history to the configured LLM provider. OpenCode Zen's free/preview models are logged and may be used for service improvement per their terms. Use a paid model or a local Ollama instance if you don't want your financial data retained.
 

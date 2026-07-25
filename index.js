@@ -23,6 +23,8 @@ const config = {
   llmProvider: process.env.LLM_PROVIDER || 'ollama',
   openrouterKey: process.env.OPENROUTER_API_KEY,
   opencodeKey: process.env.OPENCODE_API_KEY,
+  llmCli: process.env.LLM_CLI || null,          // which local CLI to use when LLM_PROVIDER=cli
+  llmCliBin: process.env.LLM_CLI_BIN || null,   // optional override for the CLI executable
   llmModel: process.env.LLM_MODEL || 'qwen3.5:cloud',
   ollamaHost: process.env.OLLAMA_HOST || 'localhost',
   ollamaPort: parseInt(process.env.OLLAMA_PORT) || 11434,
@@ -39,6 +41,7 @@ const config = {
 let resolvedProvider = config.llmProvider;
 let resolvedModel = config.llmModel;
 let resolvedOpencodePath = '/zen/v1';
+let resolvedCli = config.llmCli;
 
 if (config.llmModel.startsWith('opencode/')) {
   resolvedProvider = 'opencode';
@@ -48,6 +51,23 @@ if (config.llmModel.startsWith('opencode/')) {
   resolvedProvider = 'opencode';
   resolvedModel = config.llmModel.slice('opencode-go/'.length);
   resolvedOpencodePath = '/zen/go/v1';
+} else if (config.llmModel.startsWith('cli/')) {
+  // Convenience form: LLM_MODEL=cli/<name>  or  cli/<name>/<model...>
+  // (e.g. cli/claude, cli/opencode/glm-5-1, cli/codex/gpt-5.5-codex)
+  resolvedProvider = 'cli';
+  const rest = config.llmModel.slice('cli/'.length);
+  const slash = rest.indexOf('/');
+  resolvedCli = slash === -1 ? rest : rest.slice(0, slash);
+  // 'default' sentinel survives the `options.model || config.model` fallbacks
+  // downstream and tells callCli to let the CLI pick its own model.
+  resolvedModel = slash === -1 ? 'default' : rest.slice(slash + 1);
+} else if (config.llmProvider === 'cli') {
+  // Explicit form: LLM_PROVIDER=cli + LLM_CLI=<name>. Only forward a model when
+  // the user set one; otherwise let the CLI use its own configured default
+  // rather than inheriting the ollama LLM_MODEL default.
+  resolvedProvider = 'cli';
+  resolvedCli = config.llmCli;
+  resolvedModel = process.env.LLM_MODEL ? config.llmModel : 'default';
 }
 // ============================================
 // VALIDATION
@@ -58,9 +78,15 @@ if (!config.krakenKey || !config.krakenSecret) {
   process.exit(1);
 }
 
+const SUPPORTED_CLIS = ['claude', 'codex', 'opencode'];
+if (resolvedProvider === 'cli' && resolvedCli && !SUPPORTED_CLIS.includes(String(resolvedCli).toLowerCase())) {
+  console.warn(`WARNING: Unknown LLM_CLI '${resolvedCli}'. Supported: ${SUPPORTED_CLIS.join(', ')}`);
+}
+
 const canUseAI = resolvedProvider === 'ollama'
   || (resolvedProvider === 'opencode' && config.opencodeKey)
-  || (resolvedProvider === 'openrouter' && config.openrouterKey);
+  || (resolvedProvider === 'openrouter' && config.openrouterKey)
+  || (resolvedProvider === 'cli' && SUPPORTED_CLIS.includes(String(resolvedCli || '').toLowerCase()));
 if (!canUseAI) {
   console.warn('WARNING: No LLM provider configured - AI analysis will be disabled');
 }
@@ -97,6 +123,8 @@ async function init() {
       ollamaHost: config.ollamaHost,
       ollamaPort: config.ollamaPort,
       opencodePath: resolvedOpencodePath,
+      cli: resolvedCli,
+      cliBin: config.llmCliBin,
       fallback,
     });
     ai.setEnabled(config.aiEnabled);

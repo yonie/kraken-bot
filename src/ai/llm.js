@@ -6,6 +6,7 @@
 
 const https = require('https');
 const http = require('http');
+const { spawn } = require('child_process');
 
 let config = {
   provider: 'openrouter',
@@ -14,8 +15,10 @@ let config = {
   ollamaHost: 'localhost',
   ollamaPort: 11434,
   opencodePath: '/zen/v1',
+  cli: null,        // which coding CLI to spawn when provider === 'cli': 'claude' | 'codex' | 'opencode'
+  cliBin: null,     // optional override for the CLI executable name/path
   timeout: 180000,
-  fallback: null, // optional { provider, model, apiKey, ollamaHost, ollamaPort, timeout }
+  fallback: null, // optional { provider, model, apiKey, ollamaHost, ollamaPort, cli, cliBin, timeout }
 };
 
 function setConfig(options) {
@@ -29,6 +32,8 @@ function setConfig(options) {
     config.ollamaHost = options.ollamaHost || config.ollamaHost;
     config.ollamaPort = options.ollamaPort || config.ollamaPort;
     config.opencodePath = options.opencodePath || config.opencodePath;
+    config.cli = options.cli || config.cli;
+    config.cliBin = options.cliBin || config.cliBin;
     config.timeout = options.timeout || config.timeout;
     if ('fallback' in options) config.fallback = options.fallback;
   }
@@ -41,6 +46,9 @@ function buildActiveConfig(overrides) {
     model: overrides.model || config.model,
     ollamaHost: overrides.ollamaHost || config.ollamaHost,
     ollamaPort: overrides.ollamaPort || config.ollamaPort,
+    opencodePath: overrides.opencodePath || config.opencodePath,
+    cli: overrides.cli || config.cli,
+    cliBin: overrides.cliBin || config.cliBin,
     timeout: overrides.timeout || config.timeout,
   };
 }
@@ -113,6 +121,9 @@ async function callWithConfig(prompt, cfg) {
   }
   if (cfg.provider === 'opencode') {
     return callOpenCode(prompt, cfg);
+  }
+  if (cfg.provider === 'cli') {
+    return callCli(prompt, cfg);
   }
   return callOpenRouter(prompt, cfg);
 }
@@ -360,6 +371,133 @@ async function callOpenCode(prompt) {
   });
 }
 
+// Local coding CLIs that expose a subscription login (no API key). Each reads
+// the prompt from stdin and prints the final assistant message to stdout, so the
+// same buildPrompt() text used by the HTTP providers flows through unchanged.
+const CLI_PRESETS = {
+  claude: {
+    bin: 'claude',
+    // `claude -p` (print/non-interactive) reads the prompt from stdin.
+    buildArgs: (model) => ['-p', ...(model ? ['--model', model] : [])],
+    docUrl: 'https://docs.anthropic.com/en/docs/claude-code (run `claude login`)',
+  },
+  codex: {
+    bin: 'codex',
+    // `codex exec -` reads the prompt from stdin; read-only sandbox keeps it from
+    // touching the filesystem, and it never prompts for approval in exec mode.
+    buildArgs: (model) => [
+      'exec', '-s', 'read-only', '--skip-git-repo-check', '--color', 'never',
+      ...(model ? ['-m', model] : []), '-',
+    ],
+    docUrl: 'https://github.com/openai/codex (run `codex login`)',
+  },
+  opencode: {
+    bin: 'opencode',
+    // `opencode run` reads the prompt from stdin when no message argument is given.
+    buildArgs: (model) => ['run', ...(model ? ['--model', model] : [])],
+    docUrl: 'https://opencode.ai (run `opencode auth login`)',
+  },
+};
+
+function getCliPresets() {
+  return CLI_PRESETS;
+}
+
+/**
+ * Run the prompt through a local coding CLI that carries its own subscription
+ * login (claude / codex / opencode), instead of an HTTP API + key.
+ * @param {string} prompt
+ * @param {any} cfg active config (must include cfg.cli)
+ */
+async function callCli(prompt, cfg) {
+  cfg = cfg || buildActiveConfig({});
+  const name = String(cfg.cli || '').toLowerCase();
+  const preset = CLI_PRESETS[name];
+  if (!preset) {
+    throw new Error(`Unknown CLI '${cfg.cli}'. Supported: ${Object.keys(CLI_PRESETS).join(', ')}`);
+  }
+
+  const bin = cfg.cliBin || preset.bin;
+  // Treat the ollama-style default and the literal 'default' as "let the CLI
+  // pick its own configured model" rather than forwarding a bogus model flag.
+  const model = cfg.model && cfg.model !== 'default' ? cfg.model : null;
+  const args = preset.buildArgs(model);
+  const startTime = Date.now();
+  const timeout = cfg.timeout || 180000;
+
+  const promptSize = Buffer.byteLength(prompt, 'utf8');
+  console.log(`[AI] CLI request: ${bin} ${args.join(' ')}, size=${(promptSize / 1024).toFixed(1)}KB, timeout=${(timeout / 1000).toFixed(0)}s`);
+
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(bin, args, {
+        // On Windows the CLIs are .cmd/.ps1 shims that spawn cannot resolve
+        // without a shell. The prompt travels via stdin (never argv), so no
+        // shell-quoting/injection surface is introduced by this.
+        shell: process.platform === 'win32',
+        windowsHide: true,
+      });
+    } catch (e) {
+      reject(new Error(`Failed to spawn '${bin}': ${e.message}`));
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const finish = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(arg);
+    };
+
+    const timer = setTimeout(() => {
+      const duration = Date.now() - startTime;
+      console.error(`[AI] CLI timeout after ${(duration / 1000).toFixed(1)}s (limit: ${(timeout / 1000).toFixed(0)}s)`);
+      try { child.kill('SIGKILL'); } catch (e) {}
+      finish(reject, new Error(`${name} CLI timeout`));
+    }, timeout);
+
+    child.stdout.on('data', (d) => { stdout += d; });
+    child.stderr.on('data', (d) => { stderr += d; });
+
+    child.on('error', (e) => {
+      console.error(`[AI] CLI spawn error: ${e.message}`);
+      finish(reject, new Error(`${name} CLI failed to start: ${e.message} (is '${bin}' installed and on PATH? ${preset.docUrl})`));
+    });
+
+    child.on('close', (code) => {
+      const duration = Date.now() - startTime;
+      if (code !== 0) {
+        const tail = (stderr || stdout || '').trim().split('\n').slice(-3).join(' ');
+        console.error(`[AI] CLI exited ${code}: ${tail}`);
+        finish(reject, new Error(`${name} CLI exited ${code}: ${tail || 'no output'}`));
+        return;
+      }
+      const content = stdout.trim();
+      console.log(`[AI] CLI response: ${(duration / 1000).toFixed(1)}s, ${content.length} chars`);
+      lastCallMeta = {
+        provider: 'cli', model: model || `${name}:default`, host: bin, port: null,
+        wall_ms: duration, prompt_tokens: null, eval_tokens: null,
+        done_reason: `exit_${code}`, cli: name,
+      };
+      if (!content) {
+        finish(reject, new Error(`${name} CLI returned empty output`));
+        return;
+      }
+      finish(resolve, sanitizeResponse(content));
+    });
+
+    // Ignore EPIPE if the CLI closes stdin early.
+    child.stdin.on('error', () => {});
+    child.stdin.write(prompt);
+    child.stdin.end();
+  });
+}
+
 module.exports = {
   setConfig,
   getConfig,
@@ -368,5 +506,7 @@ module.exports = {
   callOllama,
   callOpenRouter,
   callOpenCode,
+  callCli,
+  getCliPresets,
   getLastCallMeta,
 };
