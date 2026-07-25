@@ -23,6 +23,7 @@ const config = {
   llmProvider: process.env.LLM_PROVIDER || 'ollama',
   openrouterKey: process.env.OPENROUTER_API_KEY,
   opencodeKey: process.env.OPENCODE_API_KEY,
+  llmBaseUrl: process.env.LLM_BASE_URL || null,   // override the OpenAI-compatible endpoint (e.g. a local shim)
   llmModel: process.env.LLM_MODEL || 'qwen3.5:cloud',
   ollamaHost: process.env.OLLAMA_HOST || 'localhost',
   ollamaPort: parseInt(process.env.OLLAMA_PORT) || 11434,
@@ -60,7 +61,7 @@ if (!config.krakenKey || !config.krakenSecret) {
 
 const canUseAI = resolvedProvider === 'ollama'
   || (resolvedProvider === 'opencode' && config.opencodeKey)
-  || (resolvedProvider === 'openrouter' && config.openrouterKey);
+  || (resolvedProvider === 'openrouter' && (config.openrouterKey || config.llmBaseUrl));
 if (!canUseAI) {
   console.warn('WARNING: No LLM provider configured - AI analysis will be disabled');
 }
@@ -97,6 +98,7 @@ async function init() {
       ollamaHost: config.ollamaHost,
       ollamaPort: config.ollamaPort,
       opencodePath: resolvedOpencodePath,
+      baseUrl: config.llmBaseUrl,
       fallback,
     });
     ai.setEnabled(config.aiEnabled);

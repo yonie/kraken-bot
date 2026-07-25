@@ -14,8 +14,12 @@ let config = {
   ollamaHost: 'localhost',
   ollamaPort: 11434,
   opencodePath: '/zen/v1',
+  // Base URL for the OpenAI-compatible (openrouter) provider. Defaults to
+  // OpenRouter; point it at any OpenAI-compatible endpoint — e.g. a local shim,
+  // LiteLLM, or an OpenAI-compatible gateway. `/chat/completions` is appended.
+  baseUrl: 'https://openrouter.ai/api/v1',
   timeout: 180000,
-  fallback: null, // optional { provider, model, apiKey, ollamaHost, ollamaPort, timeout }
+  fallback: null, // optional { provider, model, apiKey, ollamaHost, ollamaPort, baseUrl, timeout }
 };
 
 function setConfig(options) {
@@ -29,6 +33,7 @@ function setConfig(options) {
     config.ollamaHost = options.ollamaHost || config.ollamaHost;
     config.ollamaPort = options.ollamaPort || config.ollamaPort;
     config.opencodePath = options.opencodePath || config.opencodePath;
+    config.baseUrl = options.baseUrl || config.baseUrl;
     config.timeout = options.timeout || config.timeout;
     if ('fallback' in options) config.fallback = options.fallback;
   }
@@ -41,6 +46,8 @@ function buildActiveConfig(overrides) {
     model: overrides.model || config.model,
     ollamaHost: overrides.ollamaHost || config.ollamaHost,
     ollamaPort: overrides.ollamaPort || config.ollamaPort,
+    opencodePath: overrides.opencodePath || config.opencodePath,
+    baseUrl: overrides.baseUrl || config.baseUrl,
     timeout: overrides.timeout || config.timeout,
   };
 }
@@ -210,9 +217,37 @@ async function callOllama(prompt, timeoutMs, cfg) {
   });
 }
 
+// Parse a base URL into request options. Appends `/chat/completions` to the
+// base path and picks http/https + default port from the protocol.
+function resolveOpenAIEndpoint(baseUrl) {
+  const url = new URL(baseUrl);
+  const isHttps = url.protocol === 'https:';
+  const basePath = url.pathname.replace(/\/+$/, ''); // strip trailing slash(es)
+  return {
+    transport: isHttps ? https : http,
+    hostname: url.hostname,
+    port: url.port ? parseInt(url.port, 10) : (isHttps ? 443 : 80),
+    path: `${basePath}/chat/completions`,
+    isDefault: url.hostname === 'openrouter.ai',
+  };
+}
+
 async function callOpenRouter(prompt, cfg) {
   cfg = cfg || buildActiveConfig({});
-  if (!cfg.apiKey) {
+  const baseUrl = cfg.baseUrl || 'https://openrouter.ai/api/v1';
+
+  let endpoint;
+  try {
+    endpoint = resolveOpenAIEndpoint(baseUrl);
+  } catch (e) {
+    console.error(`[AI] Invalid LLM base URL '${baseUrl}': ${e.message}`);
+    throw new Error(`Invalid LLM base URL '${baseUrl}'`);
+  }
+
+  // An API key is required for the hosted OpenRouter default, but optional when
+  // the endpoint is repointed at a custom (e.g. local) OpenAI-compatible server
+  // that does its own auth — or none.
+  if (!cfg.apiKey && endpoint.isDefault) {
     console.error('[AI] No API key configured');
     return null;
   }
@@ -229,19 +264,21 @@ async function callOpenRouter(prompt, cfg) {
     });
 
     const promptSize = Buffer.byteLength(postData, 'utf8');
-    console.log(`[AI] OpenRouter request: model=${cfg.model}, size=${(promptSize / 1024).toFixed(1)}KB`);
+    console.log(`[AI] OpenAI-compatible request: ${endpoint.hostname}:${endpoint.port}${endpoint.path}, model=${cfg.model}, size=${(promptSize / 1024).toFixed(1)}KB`);
 
-    const req = https.request({
-      hostname: 'openrouter.ai',
-      port: 443,
-      path: '/api/v1/chat/completions',
+    const headers = {
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://kraken-bot.local',
+      'X-Title': 'Kraken Trading Bot'
+    };
+    if (cfg.apiKey) headers['Authorization'] = `Bearer ${cfg.apiKey}`;
+
+    const req = endpoint.transport.request({
+      hostname: endpoint.hostname,
+      port: endpoint.port,
+      path: endpoint.path,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${cfg.apiKey}`,
-        'HTTP-Referer': 'https://kraken-bot.local',
-        'X-Title': 'Kraken Trading Bot'
-      },
+      headers,
       timeout: timeout
     }, (res) => {
       let data = '';
@@ -250,37 +287,37 @@ async function callOpenRouter(prompt, cfg) {
         try {
           const parsed = JSON.parse(data);
           if (parsed.error) {
-            console.error(`[AI] OpenRouter error: ${parsed.error.message}`);
+            console.error(`[AI] OpenAI-compatible error: ${parsed.error.message}`);
             reject(new Error(parsed.error.message));
           } else {
             const duration = Date.now() - startTime;
-            console.log(`[AI] OpenRouter response: ${(duration/1000).toFixed(1)}s`);
+            console.log(`[AI] OpenAI-compatible response: ${(duration/1000).toFixed(1)}s`);
             lastCallMeta = {
-              provider: 'openrouter', model: cfg.model, host: 'openrouter.ai', port: 443,
+              provider: 'openrouter', model: cfg.model, host: endpoint.hostname, port: endpoint.port,
               wall_ms: duration, prompt_tokens: parsed.usage?.prompt_tokens || null,
               eval_tokens: parsed.usage?.completion_tokens || null, done_reason: null,
             };
             resolve(sanitizeResponse(parsed.choices?.[0]?.message?.content));
           }
         } catch (e) {
-          console.error(`[AI] OpenRouter parse error: ${e.message}`);
-          reject(new Error('Failed to parse OpenRouter response'));
+          console.error(`[AI] OpenAI-compatible parse error: ${e.message}`);
+          reject(new Error('Failed to parse OpenAI-compatible response'));
         }
       });
     });
 
     req.on('error', e => {
-      console.error(`[AI] OpenRouter connection error: ${e.message}`);
+      console.error(`[AI] OpenAI-compatible connection error: ${e.message}`);
       reject(e);
     });
-    
+
     req.on('timeout', () => {
       const duration = Date.now() - startTime;
-      console.error(`[AI] OpenRouter timeout after ${(duration/1000).toFixed(1)}s`);
+      console.error(`[AI] OpenAI-compatible timeout after ${(duration/1000).toFixed(1)}s`);
       req.destroy();
-      reject(new Error('OpenRouter timeout'));
+      reject(new Error('OpenAI-compatible request timeout'));
     });
-    
+
     req.write(postData);
     req.end();
   });

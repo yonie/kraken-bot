@@ -45,6 +45,7 @@ let config = {
   ollamaHost: 'localhost',
   ollamaPort: 11434,
   opencodePath: '/zen/v1',
+  baseUrl: null,
   timeout: parseInt(process.env.OLLAMA_TIMEOUT_MS) || 180000,
   enabled: true,
   intervalMinutes: 10
@@ -61,6 +62,7 @@ function init(options = {}) {
     config.ollamaHost = options.ollamaHost || config.ollamaHost;
     config.ollamaPort = options.ollamaPort || config.ollamaPort;
     config.opencodePath = options.opencodePath || config.opencodePath;
+    config.baseUrl = options.baseUrl || config.baseUrl;
     config.timeout = options.timeout || config.timeout;
     config.fallback = options.fallback || null;
   }
@@ -72,6 +74,7 @@ function init(options = {}) {
     ollamaHost: config.ollamaHost,
     ollamaPort: config.ollamaPort,
     opencodePath: config.opencodePath,
+    baseUrl: config.baseUrl,
     timeout: config.timeout,
     fallback: config.fallback,
   });

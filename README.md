@@ -61,12 +61,26 @@ An AI-powered cryptocurrency trading bot for [Kraken](https://www.kraken.com) ex
 | `KRAKEN_KEY` | required | Your Kraken API key |
 | `KRAKEN_PASSCODE` | required | Your Kraken API secret |
 | `LLM_PROVIDER` | `ollama` | LLM provider: `ollama`, `openrouter`, or `opencode` |
-| `OPENROUTER_API_KEY` | - | OpenRouter API key (when provider=openrouter) |
+| `OPENROUTER_API_KEY` | - | OpenRouter API key (when provider=openrouter; optional if `LLM_BASE_URL` points at a custom endpoint) |
 | `OPENCODE_API_KEY` | - | OpenCode Zen API key (when provider=opencode) |
+| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | Base URL for the OpenAI-compatible provider. Point it at any OpenAI-compatible endpoint (local shim, LiteLLM, gateway). `/chat/completions` is appended |
 | `LLM_MODEL` | `qwen3.5:cloud` | LLM model — prefix `opencode/` for Zen, `opencode-go/` for Go |
 | `PORT` | `8000` | Dashboard port |
 | `AI_ENABLED` | `true` | Enable/disable AI trading |
 | `ANALYSIS_INTERVAL_MINUTES` | `30` | How often AI analyzes |
+
+### Pointing at a custom OpenAI-compatible endpoint
+
+`LLM_BASE_URL` lets the `openrouter` provider talk to any OpenAI-compatible `/chat/completions` server, not just OpenRouter. This is handy if you want to run the bot against a local gateway/shim — for example one that fronts a coding-CLI subscription (`claude -p`, `codex exec`, `opencode run`) or a self-hosted model:
+
+```env
+LLM_PROVIDER=openrouter
+LLM_BASE_URL=http://localhost:4000/v1   # your local OpenAI-compatible shim
+LLM_MODEL=whatever-model-the-shim-exposes
+# OPENROUTER_API_KEY is optional when the endpoint isn't openrouter.ai
+```
+
+The bot keeps speaking plain chat-completions; how that endpoint reaches a model (and how it authenticates) is entirely up to the shim.
 
 > **Privacy Note:** This bot sends your full portfolio, balances, and trade history to the configured LLM provider. OpenCode Zen's free/preview models are logged and may be used for service improvement per their terms. Use a paid model or a local Ollama instance if you don't want your financial data retained.
 
